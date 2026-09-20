@@ -2,6 +2,7 @@ import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'node:path';
+import fs from 'node:fs';
 // Node fetch 默认不走系统代理；若环境存在 HTTPS_PROXY 则让所有外部请求走代理
 import { setGlobalDispatcher, ProxyAgent } from 'undici';
 
@@ -13,6 +14,19 @@ if (_proxy) {
 
 // 从 server/.env 加载环境变量（无论从项目根还是 dist 目录启动都有效）
 dotenv.config({ path: path.resolve(process.cwd(), 'server/.env') });
+
+// ==================== 知识库加载（严格 RAG） ====================
+// 启动时读取 server/knowledge/manual.md，作为回答的唯一事实依据
+let KNOWLEDGE_BASE = '(知识库未加载)';
+try {
+  KNOWLEDGE_BASE = fs.readFileSync(
+    path.resolve(process.cwd(), 'server/knowledge/manual.md'),
+    'utf-8',
+  );
+  console.log(`[server] 知识库已加载: ${KNOWLEDGE_BASE.length} 字符`);
+} catch (e) {
+  console.warn('[server] 知识库文件未找到，将无约束模式运行:', (e as Error).message);
+}
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -102,9 +116,25 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     return;
   }
 
+  // 严格 RAG：把知识库 + 约束规则作为 system 前置注入
+  const ragSystem: ChatMessage = {
+    role: 'system',
+    content: `你是面向农机装备的故障诊断智能体。你必须严格依据下方《农机故障诊断知识库》回答问题。
+
+【硬性规则】
+1. 只允许使用知识库中出现的信息；不得编造机型参数、维修数据、故障代码、零件号。
+2. 若知识库中没有相关内容，必须直接回答："根据现有知识库，这部分资料不足，建议查阅该机型官方维修手册或联系售后。" 不要凭训练记忆猜测。
+3. 涉及维修操作时，末尾必须附带安全提示（停机、泄压、高温冷却等）。
+4. 用简洁、条理化的中文回答。
+
+《农机故障诊断知识库》：
+${KNOWLEDGE_BASE}`,
+  };
+  const fullMessages: ChatMessage[] = [ragSystem, ...messages];
+
   // 1) 优先 Gemini
   if (geminiKey) {
-    const result = await callProvider(GEMINI_API_URL, geminiKey, GEMINI_MODEL, messages);
+    const result = await callProvider(GEMINI_API_URL, geminiKey, GEMINI_MODEL, fullMessages);
     if (result && result.status === 200) {
       res.json(result.data);
       return;
@@ -119,7 +149,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
 
   // 2) 回退 DeepSeek
   if (deepseekKey) {
-    const result = await callProvider(DEEPSEEK_API_URL, deepseekKey, DEEPSEEK_MODEL, messages);
+    const result = await callProvider(DEEPSEEK_API_URL, deepseekKey, DEEPSEEK_MODEL, fullMessages);
     if (result && result.status === 200) {
       res.json(result.data);
       return;
