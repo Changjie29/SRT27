@@ -1,0 +1,61 @@
+{
+  "id": "agricultural_machinery_fault_diagnosis_agent_1",
+  "name": "农机故障诊断智能体",
+  "description": "面向拖拉机、联合收割机等农业机械装备的多模态故障诊断智能体，融合振动、声音、视觉与运行参数，结合大语言模型与结构仿真验证，提供专业的故障诊断与维修建议。",
+  "version": "1.0.0",
+  "category": "ai_agent",
+  "tags": ["农机", "故障诊断", "多模态", "智能体", "农业工程"],
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "symptom": {
+        "type": "string",
+        "description": "故障现象描述"
+      },
+      "machineType": {
+        "type": "string",
+        "enum": ["拖拉机", "联合收割机", "其他"],
+        "description": "农机类型"
+      },
+      "context": {
+        "type": "string",
+        "description": "附加上下文信息（工况、使用时长、保养记录等）"
+      }
+    },
+    "required": ["symptom"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "diagnosis": {
+        "type": "string",
+        "description": "诊断结论与故障原因分析（Markdown 格式）"
+      },
+      "possibleCauses": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "cause": { "type": "string" },
+            "probability": { "type": "string", "description": "高/中/低" }
+          }
+        }
+      },
+      "troubleshootingSteps": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "排查步骤"
+      },
+      "repairSuggestions": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "维修建议"
+      },
+      "preventionMeasures": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "预防措施"
+      }
+    }
+  }
+}

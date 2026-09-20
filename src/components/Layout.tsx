@@ -1,0 +1,141 @@
+import { useState } from 'react';
+import { Outlet, useLocation, useNavigate, NavLink } from 'react-router-dom';
+import { Menu, X, MessageSquare } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+const NAV_ITEMS = [
+  { label: '首页', path: '/' },
+  { label: '多模态方案', hash: 'multimodal' },
+  { label: '智能体架构', hash: 'architecture' },
+  { label: '应用场景', hash: 'scenarios' },
+];
+
+export function Layout() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleHashNav = (hash: string) => {
+    setMobileOpen(false);
+    if (location.pathname !== '/') {
+      navigate(`/#${hash}`);
+    } else {
+      const el = document.getElementById(hash);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      {/* 顶部导航栏 */}
+      <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 md:px-6 lg:px-8">
+          {/* Logo */}
+          <NavLink to="/" className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2">
+                <circle cx="7" cy="16" r="3" />
+                <circle cx="17" cy="16" r="3" />
+                <path d="M4 16V10l8-4 8 4v6" />
+                <path d="M12 6v10" />
+              </svg>
+            </div>
+            <span className="font-serif text-lg font-bold text-foreground">司农智机</span>
+          </NavLink>
+
+          {/* 桌面端导航 */}
+          <nav className="hidden items-center gap-8 md:flex">
+            {NAV_ITEMS.map((item) =>
+              item.hash ? (
+                <button
+                  key={item.hash}
+                  onClick={() => handleHashNav(item.hash!)}
+                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
+                >
+                  {item.label}
+                </button>
+              ) : (
+                <NavLink
+                  key={item.path}
+                  to={item.path!}
+                  end={item.path === '/'}
+                  className={({ isActive }) =>
+                    cn(
+                      'text-sm transition-colors hover:text-primary',
+                      isActive ? 'text-primary font-semibold' : 'text-muted-foreground',
+                    )
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ),
+            )}
+            <Button asChild size="sm" className="gap-1.5">
+              <NavLink to="/chat">
+                <MessageSquare className="h-4 w-4" />
+                智能体对话
+              </NavLink>
+            </Button>
+          </nav>
+
+          {/* 移动端菜单按钮 */}
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-border md:hidden"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label="菜单"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+
+        {/* 移动端导航抽屉 */}
+        {mobileOpen && (
+          <div className="border-t border-border/60 bg-background md:hidden">
+            <nav className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-3">
+              {NAV_ITEMS.map((item) =>
+                item.hash ? (
+                  <button
+                    key={item.hash}
+                    onClick={() => handleHashNav(item.hash!)}
+                    className="rounded-md px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-primary"
+                  >
+                    {item.label}
+                  </button>
+                ) : (
+                  <NavLink
+                    key={item.path}
+                    to={item.path!}
+                    end={item.path === '/'}
+                    onClick={() => setMobileOpen(false)}
+                    className={({ isActive }) =>
+                      cn(
+                        'rounded-md px-3 py-2 text-sm transition-colors',
+                        isActive ? 'bg-accent text-primary font-semibold' : 'text-muted-foreground hover:bg-accent hover:text-primary',
+                      )
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ),
+              )}
+              <Button asChild size="sm" className="mt-2 gap-1.5">
+                <NavLink to="/chat" onClick={() => setMobileOpen(false)}>
+                  <MessageSquare className="h-4 w-4" />
+                  智能体对话
+                </NavLink>
+              </Button>
+            </nav>
+          </div>
+        )}
+      </header>
+
+      {/* 主内容区 */}
+      <main className="flex-1 w-full">
+        <Outlet />
+      </main>
+    </div>
+  );
+}

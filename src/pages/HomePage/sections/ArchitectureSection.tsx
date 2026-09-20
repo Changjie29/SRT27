@@ -1,0 +1,85 @@
+import { Layers, Cpu, Network, ShieldCheck, ArrowDown } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ARCHITECTURE_LAYERS } from '@/data/content';
+
+const ICON_MAP: Record<string, typeof Layers> = {
+  Layers,
+  Network,
+  Cpu,
+  ShieldCheck,
+};
+
+export default function ArchitectureSection() {
+  return (
+    <section id="architecture" className="w-full py-16 md:py-20">
+      <div className="mx-auto max-w-6xl px-4 md:px-6 lg:px-8">
+        {/* 标题 */}
+        <div className="mb-12 text-center">
+          <div className="mb-3 text-sm font-medium text-wheat">智能体架构</div>
+          <h2 className="font-serif text-2xl font-bold text-foreground md:text-3xl">
+            四层技术链路 · 端到端诊断闭环
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-sm text-muted-foreground md:text-base">
+            从感知数据采集到最终维修决策，四层架构层层递进，确保诊断准确、可解释、可验证
+          </p>
+          <div className="mx-auto mt-4 h-px w-12 bg-wheat" />
+        </div>
+
+        {/* 架构图 - 纵向四层 */}
+        <div className="mx-auto max-w-3xl space-y-4">
+          {ARCHITECTURE_LAYERS.map((layer, i) => {
+            const Icon = ICON_MAP[layer.icon] || Layers;
+            const wheat = i % 2 === 1;
+            const color = wheat ? 'bg-wheat/10 text-wheat-foreground' : 'bg-primary/10 text-primary';
+            return (
+              <motion.div
+                key={layer.name}
+                initial={{ opacity: 0, x: i % 2 === 0 ? -20 : 20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: i * 0.1 }}
+                className="relative"
+              >
+                <div className="flex items-start gap-4 rounded-xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:shadow-md hover:border-primary/30">
+                  {/* 标号 */}
+                  <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-md bg-primary/10 text-center">
+                    <span className="font-serif text-lg font-bold text-primary">{layer.index}</span>
+                  </div>
+
+                  {/* 内容 */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-md ${color}`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <h3 className="font-serif text-lg font-semibold text-foreground">{layer.name}</h3>
+                      <span className="text-xs text-muted-foreground">{layer.desc}</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+                      {layer.points.map((p) => (
+                        <div
+                          key={p}
+                          className="flex items-center gap-1.5 rounded-md bg-accent/50 px-2.5 py-1.5 text-xs text-foreground"
+                        >
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" />
+                          {p}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 箭头连接 */}
+                {i < ARCHITECTURE_LAYERS.length - 1 && (
+                  <div className="absolute -bottom-5 left-1/2 flex h-6 -translate-x-1/2 items-center justify-center text-muted-foreground/50 z-10">
+                    <ArrowDown className="h-5 w-5" />
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
