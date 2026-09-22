@@ -31,10 +31,16 @@ export default function HeroSection() {
               {pick(h.eyebrow, lang)}
             </div>
 
-            <h1 className="font-serif text-4xl font-bold leading-tight text-foreground md:text-5xl lg:text-6xl">
-              {pick(h.title1, lang)}
+            <h1
+              className={
+                lang === 'zh'
+                  ? 'font-serif text-4xl font-bold leading-tight text-foreground md:text-5xl lg:text-6xl'
+                  : 'font-serif text-3xl font-bold leading-tight text-foreground md:text-4xl lg:text-5xl'
+              }
+            >
+              {pick(h.title1, lang)}{' '}
               <span className="text-primary">{pick(h.titleHighlight, lang)}</span>
-              <br />
+              <br className="hidden sm:block" />
               {pick(h.title2, lang)}
             </h1>
 
@@ -69,7 +75,7 @@ export default function HeroSection() {
           </div>
 
           {/* 右侧 3D 模型 */}
-          <div className="relative">
+          <div className="relative shrink-0 lg:min-w-0">
             <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-br from-primary/5 via-transparent to-wheat/10 blur-2xl" />
             <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-border/60 bg-card/60 shadow-sm backdrop-blur-sm">
               <TractorViewer />
