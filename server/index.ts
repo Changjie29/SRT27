@@ -31,10 +31,57 @@ try {
 const app = express();
 const PORT = process.env.PORT || 8787;
 
-app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+// ==================== 安全中间件 ====================
+// 信任代理（如有反向代理）
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
 
-// 健康检查
+// 安全响应头（轻量手写，替代 helmet）
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-XSS-Protection', '0');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  next();
+});
+
+// CORS 收紧：只允许本地前端
+const ALLOWED_ORIGINS = new Set([
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : []),
+]);
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin || ALLOWED_ORIGINS.has(origin)) return cb(null, true);
+      cb(new Error('CORS blocked'));
+    },
+  }),
+);
+
+app.use(express.json({ limit: '256kb' }));
+
+// 简易内存限流：每 IP 每分钟最多 30 次对话
+const rateBucket = new Map<string, { count: number; reset: number }>();
+app.use('/api/chat', (req, res, next) => {
+  const ip = req.ip || 'unknown';
+  const now = Date.now();
+  const bucket = rateBucket.get(ip);
+  if (!bucket || bucket.reset < now) {
+    rateBucket.set(ip, { count: 1, reset: now + 60_000 });
+  } else {
+    bucket.count++;
+    if (bucket.count > 30) {
+      res.status(429).json({ error: '请求过于频繁，请稍后再试' });
+      return;
+    }
+  }
+  next();
+});
+
+// 健康检查（不泄露敏感信息）
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
 });
@@ -111,9 +158,25 @@ app.post('/api/chat', async (req: Request, res: Response) => {
 
   const { messages } = req.body as { messages?: ChatMessage[] };
 
+  // ---- 输入校验 ----
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     res.status(400).json({ error: 'messages 参数缺失或格式错误' });
     return;
+  }
+  if (messages.length > 50) {
+    res.status(400).json({ error: '对话轮次过多' });
+    return;
+  }
+  const ROLES = new Set(['system', 'user', 'assistant']);
+  for (const m of messages) {
+    if (!m || typeof m !== 'object' || !ROLES.has(m.role) || typeof m.content !== 'string') {
+      res.status(400).json({ error: '消息格式错误' });
+      return;
+    }
+    if (m.content.length > 2000) {
+      res.status(400).json({ error: '单条消息过长（上限 2000 字符）' });
+      return;
+    }
   }
 
   // 严格 RAG：把知识库 + 约束规则作为 system 前置注入
@@ -155,17 +218,14 @@ ${KNOWLEDGE_BASE}`,
       return;
     }
     if (result && result.status !== 200) {
-      res.status(result.status).json({
-        error: 'LLM API 请求失败（Gemini 与 DeepSeek）',
-        detail: result.errText,
-      });
+      console.warn(`[chat] DeepSeek 失败(${result.status})`);
+      res.status(502).json({ error: '智能体服务暂时不可用，请稍后再试' });
       return;
     }
   }
 
   res.status(502).json({
-    error: 'LLM API 不可用',
-    message: 'Gemini 与 DeepSeek 均无法连接，请检查服务端 API Key 配置',
+    error: '智能体服务暂时不可用',
   });
 });
 
@@ -180,11 +240,27 @@ app.get('/api/model/tractor', (_req: Request, res: Response) => {
   });
 });
 
+// 全局错误处理中间件（兜底，不泄露堆栈）
+app.use((err: Error, _req: Request, res: Response, _next: express.NextFunction) => {
+  console.error('[server] unhandled:', err.message);
+  res.status(500).json({ error: '服务器内部错误' });
+});
+
 // 仅在直接运行时监听（由 dev.mjs / dist-server 入口启动）
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`[server] running on http://localhost:${PORT}`);
   });
+
+  // 优雅退出：收到信号时关闭连接，避免进程僵死
+  const shutdown = (signal: string) => {
+    console.log(`[server] 收到 ${signal}，正在关闭...`);
+    server.close(() => process.exit(0));
+    // 兜底：5 秒后强制退出
+    setTimeout(() => process.exit(1), 5000).unref();
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 export default app;
