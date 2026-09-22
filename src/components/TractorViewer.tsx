@@ -14,6 +14,14 @@ const CAMERA_CONFIG = { position: [6.5, 4, 6.5] as [number, number, number], fov
 // OrbitControls 内置自动旋转配置常量
 const AUTO_ROTATE_SPEED = 0.8;
 
+// Canvas 配置常量：避免每次渲染创建新对象字面量导致 R3F 重建 WebGL context（滚动闪屏主因之一）
+const GL_CONFIG = { antialias: true, alpha: false } as const;
+const DPR_CONFIG: [number, number] = [1, 2];
+const LIGHT_COLORS = {
+  dark: { background: '#1a2420', fog: '#1a2420', cell: '#2e3a34', section: '#4a5a50' },
+  light: { background: '#F5F1E8', fog: '#F5F1E8', cell: '#D4CFC4', section: '#B8B1A3' },
+} as const;
+
 interface ModelFallbackProps {
   error: unknown;
   resetErrorBoundary?: () => void;
@@ -87,12 +95,14 @@ export default function TractorViewer() {
         window.matchMedia('(prefers-color-scheme: dark)').matches),
   );
   useEffect(() => {
-    const update = () =>
-      setIsDark(
+    const update = () => {
+      const next =
         document.documentElement.classList.contains('theme-dark') ||
-          (!document.documentElement.classList.contains('theme-light') &&
-            window.matchMedia('(prefers-color-scheme: dark)').matches),
-      );
+        (!document.documentElement.classList.contains('theme-light') &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches);
+      // 先比较再 setState，避免 MutationObserver 触发无意义重渲染
+      setIsDark((prev) => (prev === next ? prev : next));
+    };
     const observer = new MutationObserver(update);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', update);
@@ -207,6 +217,8 @@ export default function TractorViewer() {
     return <ModelFallback error={modelError} />;
   }
 
+  const palette = isDark ? LIGHT_COLORS.dark : LIGHT_COLORS.light;
+
   return (
     <div className="relative h-full w-full">
       <ErrorBoundary
@@ -219,11 +231,11 @@ export default function TractorViewer() {
         <Canvas
           shadows
           camera={CAMERA_CONFIG}
-          gl={{ antialias: true, alpha: false }}
-          dpr={[1, 2]}
+          gl={GL_CONFIG}
+          dpr={DPR_CONFIG}
         >
-          <color attach="background" args={[isDark ? '#1a2420' : '#F5F1E8']} />
-          <fog attach="fog" args={[isDark ? '#1a2420' : '#F5F1E8', 8, 20]} />
+          <color attach="background" args={[palette.background]} />
+          <fog attach="fog" args={[palette.fog, 8, 20]} />
 
           {/* 程序化环境光照（零网络依赖，替代 drei Environment preset 的 HDR 贴图） */}
           <ProgrammaticEnvironment />
@@ -244,10 +256,10 @@ export default function TractorViewer() {
             args={[20, 20]}
             cellSize={1}
             cellThickness={0.5}
-            cellColor={isDark ? '#2e3a34' : '#D4CFC4'}
+            cellColor={palette.cell}
             sectionSize={5}
             sectionThickness={1}
-            sectionColor={isDark ? '#4a5a50' : '#B8B1A3'}
+            sectionColor={palette.section}
             fadeDistance={15}
             fadeStrength={1}
             position={[0, -0.4, 0]}

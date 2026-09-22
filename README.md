@@ -109,44 +109,100 @@ server/knowledge/
 
 未来接入 PDF/Word/Excel/TXT 时，在 `server/knowledge/retriever.ts` 之上增加解析层即可，接口保持 `chunks: { text, source, heading }[]`。
 
-## 目录结构
+## 项目结构
 
 ```
 SRT27/
-├── src/                          # React 前端
+├── public/                          # 静态公共资源（构建时原样拷贝到 dist/）
+│   └── models/
+│       └── tractor.glb              # 拖拉机 3D 模型（/api/model/tractor 提供）
+│
+├── src/                              # 前端源码（React 19 + Vite + TypeScript）
+│   ├── main.tsx                     # 应用入口（挂载 React + Router）
+│   ├── app.tsx                      # 路由表（/ 首页、/chat 对话、* 404）
+│   ├── index.css / tailwind-theme.css / typography.css  # 样式与主题变量
 │   ├── components/
-│   │   ├── TractorViewer.tsx     # 3D 查看器（R3F + OrbitControls）
-│   │   ├── TractorModel.tsx      # GLB 加载与资源释放
-│   │   └── ui/                   # shadcn/ui 基础组件
+│   │   ├── Layout.tsx               # 全局布局：顶栏导航 + 主题/语言切换 + Outlet
+│   │   ├── TractorViewer.tsx       # 3D 查看器（R3F Canvas + OrbitControls + 自转）
+│   │   ├── TractorModel.tsx         # GLB 模型加载、清理 Sketchfab 非标准节点、居中缩放
+│   │   ├── SectionDivider.tsx      # 绿色装饰分割线（leaf/dots/line 三种）
+│   │   └── ui/                     # shadcn/ui 基础组件（button/card/dialog/textarea）
 │   ├── pages/
-│   │   ├── HomePage/             # 首页（Hero/痛点/多模态/架构/仿真/路线/场景/CTA）
-│   │   ├── ChatPage/             # 对话页（含农机类型/品牌/型号可选选择器）
+│   │   ├── HomePage/
+│   │   │   ├── HomePage.tsx         # 首页组装（按顺序拼接 8 个 section）
+│   │   │   └── sections/            # 首页各区块
+│   │   │       ├── HeroSection.tsx          # 首屏：标题 + CTA + 3D 模型
+│   │   │       ├── PainPointsSection.tsx    # 行业痛点 + 真实能力卡片
+│   │   │       ├── MultimodalSection.tsx    # 多模态信号（标注规划中）
+│   │   │       ├── ArchitectureSection.tsx   # 真实四层架构
+│   │   │       ├── SimulationSection.tsx     # 3D 已实现 / FEA 与数字孪生规划中
+│   │   │       ├── TechRouteSection.tsx      # 六步技术流程
+│   │   │       ├── ScenariosSection.tsx      # 拖拉机/收割机/更广农机
+│   │   │       └── ClosingSection.tsx       # 底部 CTA
+│   │   ├── ChatPage/
+│   │   │   └── ChatPage.tsx         # 对话页：历史/快捷提问/农机信息选择器/Provider 显示
 │   │   └── NotFoundPage/
-│   ├── data/content.ts           # 全部页面文案（中英双语）
-│   ├── hooks/                    # useLang / use-mobile / use-theme
+│   │       └── NotFoundPage.tsx     # 404
+│   ├── data/
+│   │   └── content.ts               # 全部页面文案（中英双语）+ pick() 工具
+│   ├── hooks/
+│   │   ├── useLang.ts               # 中英双语切换（useSyncExternalStore）
+│   │   └── use-mobile.ts            # 响应式断点 hook
 │   └── lib/
-├── server/
-│   ├── index.ts                  # Express 路由 + 安全中间件 + 限流
-│   ├── dev.ts                    # 开发入口（tsx watch）
-│   ├── llm/                      # LLM Provider 层
-│   │   ├── types.ts              # Provider/ChatResult/ProviderError 接口
-│   │   ├── http.ts               # fetchWithTimeout + detectProxy
-│   │   ├── openai-compatible.ts  # 通用 OpenAI 兼容 provider 工厂
-│   │   ├── gemini.ts             # Gemini provider
-│   │   ├── deepseek.ts           # DeepSeek provider
-│   │   └── router.ts             # 按代理选 primary + fallback 单例
-│   ├── knowledge/                # 知识库 + 轻量检索器
-│   │   ├── retriever.ts          # 扫描/切块/打分/top-K
-│   │   ├── systemPrompt.ts       # buildSystemPrompt（后端独占）
-│   │   └── 00_说明/ 01_通用原理/ ...
-│   └── .env                      # 本地环境变量（不提交）
-├── public/models/tractor.glb     # 3D 模型（/api/model/tractor）
-├── scripts/                      # dev.mjs / build.sh
-├── package.json
-├── tsconfig.app.json             # 前端
-├── tsconfig.server.json          # 后端
-└── eslint.config.mjs
+│       ├── utils.ts                 # cn() 类名合并
+│       └── api-base.ts              # API 基础地址
+│
+├── server/                           # 后端（Node.js + Express + tsx，ESM）
+│   ├── dev.ts                       # 开发入口（tsx watch 启动 index.ts）
+│   ├── index.ts                     # Express 路由：安全中间件/限流/health/chat/model
+│   ├── .env                         # 本地环境变量（永不提交 Git）
+│   │
+│   ├── llm/                         # LLM Provider 层（按代理自动选模型）
+│   │   ├── types.ts                 # Provider 接口 / ChatResult / ProviderError
+│   │   ├── http.ts                  # fetchWithTimeout(20s) + detectProxy()
+│   │   ├── openai-compatible.ts     # 通用 OpenAI 兼容 chat/completions 工厂
+│   │   ├── gemini.ts                # Gemini provider（gemini-3.6-flash）
+│   │   ├── deepseek.ts              # DeepSeek provider（deepseek-v4-flash）
+│   │   └── router.ts                # 单例：有代理→Gemini，无代理→DeepSeek，失败 fallback
+│   │
+│   └── knowledge/                   # 本地知识库 + 轻量 RAG
+│       ├── retriever.ts             # 启动扫描 .md、按 ## 切块、关键词打分、top-K
+│       ├── systemPrompt.ts          # buildSystemPrompt（后端独占 system prompt）
+│       ├── 00_说明/                 # 目录约定（不参与检索）
+│       ├── 01_通用原理/             # 发动机/冷却/润滑/液压/电气/传动...
+│       ├── 02_农机类型/             # 拖拉机/收割机/插秧机...
+│       ├── 03_新能源农机/           # 电动/混动农机
+│       ├── 04_智能农机/             # 无人化/自动驾驶
+│       ├── 05_故障代码/             # 各品牌故障码表
+│       ├── 06_品牌资料/             # 东方红/雷沃/久保田/约翰迪尔...
+│       ├── 07_具体型号/             # 具体型号维修手册
+│       └── 99_待整理/              # 未分类资料
+│
+├── shared/                           # 前后端共享类型
+│   ├── plugin-types.ts              # 插件/扩展类型定义
+│   └── capabilities/                # 能力声明
+│
+├── scripts/
+│   ├── dev.mjs                      # 同时启动前端 Vite + 后端 tsx
+│   ├── build.sh                    # 先 build:client 再 build:server
+│   └── cloud-pull.sh               # 云电脑上执行的 git pull 脚本
+│
+├── public/                           # 见上（3D 模型等公共资源）
+├── index.html                        # Vite HTML 入口
+├── package.json                     # 依赖与 scripts（dev/typecheck/lint/build）
+├── vite.config.ts                   # Vite 配置（代理 /api → 8787）
+├── tsconfig.app.json                # 前端 TS 配置
+├── tsconfig.server.json             # 后端 TS 配置
+├── tsconfig.node.json               # Vite/Node 侧 TS 配置
+├── eslint.config.mjs                # ESLint 配置
+├── components.json                  # shadcn/ui 配置
+└── README.md
 ```
+
+## Git 分支
+
+- **`main`**：稳定版本，日常开发与部署都基于此分支。所有同步脚本（rsync + git push）都推到 `main`。
+- 目前仓库只有 `main` 一个分支。后续如需要独立开发新功能，可从 `main` 切 `feature/<功能名>` 分支，合并后删除，不长期保留展示性分支。
 
 ## API
 
