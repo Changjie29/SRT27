@@ -124,6 +124,41 @@ export default function TractorViewer() {
     };
   }, []);
 
+  const handleModelLoaded = useCallback(
+    (object: THREE.Object3D) => {
+      setModelLoaded(true);
+
+      // 模型加载后自动 fit：按实际包围盒对准中心 + 按模型大小定相机距离
+      const controls = controlsRef.current;
+      if (!controls) return;
+
+      const box = new THREE.Box3().setFromObject(object);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+
+      // 目标点：模型几何中心略偏上（视觉重心）
+      const target = new THREE.Vector3(center.x, center.y + size.y * 0.05, center.z);
+      controls.target.copy(target);
+
+      // 按 fov 计算刚好装下模型的距离，并留 40% 留白
+      const fitDistance = (maxDim / 2) / Math.tan((CAMERA_CONFIG.fov * Math.PI) / 360);
+      const distance = fitDistance * 1.5;
+
+      // 45° 俯视角
+      const dir = new THREE.Vector3(1, 0.6, 1).normalize();
+      const cameraPos = target.clone().add(dir.multiplyScalar(distance));
+      controls.object.position.copy(cameraPos);
+
+      // 根据模型大小动态设置缩放范围
+      controls.minDistance = maxDim * 0.6;
+      controls.maxDistance = maxDim * 4;
+
+      controls.update();
+    },
+    [],
+  );
+
   useEffect(() => {
     // 检测 WebGL 支持
     try {
@@ -206,7 +241,7 @@ export default function TractorViewer() {
 
           {/* Suspense fallback 必须是 three.js 对象，不能放 HTML 元素 */}
           <Suspense fallback={<CanvasLoadingPlaceholder />}>
-            <TractorModel onLoaded={() => setModelLoaded(true)} />
+            <TractorModel onLoaded={handleModelLoaded} />
           </Suspense>
 
           <OrbitControls

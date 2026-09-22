@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import modelUrl from './tractor-transformed.glb?url';
 
 interface TractorModelProps {
-  onLoaded?: () => void;
+  onLoaded?: (object: THREE.Object3D) => void;
 }
 
 // 允许保留的标准 three.js 节点类型
@@ -50,10 +50,10 @@ export default function TractorModel({ onLoaded }: TractorModelProps) {
   }, [scene]);
 
   useEffect(() => {
-    // 模型加载完成回调
+    // 模型加载完成回调，把场景对象传出去供外层做相机 fit
     if (cleanedScene && onLoaded) {
-      // 延迟一帧确保首次渲染完成
-      requestAnimationFrame(() => onLoaded());
+      // 延迟一帧确保缩放/居中完成、首次渲染就绪
+      requestAnimationFrame(() => onLoaded(cleanedScene));
     }
   }, [cleanedScene, onLoaded]);
 
