@@ -51,33 +51,19 @@ export default function PainPointsSection() {
           })}
         </div>
 
-        {/* 数据条 */}
-        <div className="mt-16 grid gap-8 md:grid-cols-3">
-          {content.PAIN_STATS.map((stat, i) => (
+        {/* 真实能力概览（不写虚构指标） */}
+        <div className="mt-16 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+          {content.CAPABILITY_STATS.map((stat, i) => (
             <motion.div
               key={pick(stat.label, lang)}
-              initial={{ opacity: 0, width: 0 }}
-              whileInView={{ opacity: 1, width: '100%' }}
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: i * 0.15 }}
-              className="space-y-2"
+              transition={{ duration: 0.5, delay: i * 0.08 }}
+              className="rounded-xl border border-border/60 bg-card p-4 text-center"
             >
-              <div className="flex items-baseline justify-between">
-                <span className="text-sm text-muted-foreground">{pick(stat.label, lang)}</span>
-                <span className="font-serif text-2xl font-bold text-primary">
-                  {stat.value}
-                  <span className="text-base">%</span>
-                </span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-accent">
-                <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-primary to-primary/70"
-                  initial={{ width: 0 }}
-                  whileInView={{ width: `${stat.value}%` }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 1, delay: i * 0.15 + 0.2, ease: 'easeOut' }}
-                />
-              </div>
+              <div className="font-serif text-base font-bold text-primary">{stat.value}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{pick(stat.label, lang)}</div>
             </motion.div>
           ))}
         </div>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent } from 'react';
-import { Send, Trash2, Loader2, Bot, User, Sparkles } from 'lucide-react';
+import { Send, Trash2, Loader2, Bot, User, Sparkles, Cpu } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import content, { pick, CHAT_SYSTEM_PROMPT } from '@/data/content';
+import content, { pick } from '@/data/content';
 import { useLang } from '@/hooks/useLang';
 
 interface ChatMessage {
@@ -24,148 +24,166 @@ interface ChatMessage {
   role: 'user' | 'assistant' | 'error' | 'loading';
   content: string;
   model?: string;
+  provider?: 'gemini' | 'deepseek';
 }
 
-const STORAGE_KEY = '__app_agri_chat_history';
+const STORAGE_KEY = '__app_srt27_chat_history';
+const META_KEY = '__app_srt27_chat_meta';
+
+// 农机类型选项（轻量，不强制）
+const MACHINE_TYPES_ZH = ['拖拉机', '联合收割机', '插秧机', '植保机', '新能源农机', '无人农机', '其他'];
+const MACHINE_TYPES_EN = ['Tractor', 'Combine', 'Transplanter', 'Sprayer', 'New-energy', 'Autonomous', 'Other'];
 
 function generateId() {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function loadHistory(): ChatMessage[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadMeta(): { machineType: string; brand: string; model: string } {
+  try {
+    const meta = localStorage.getItem(META_KEY);
+    if (!meta) return { machineType: '', brand: '', model: '' };
+    const m = JSON.parse(meta);
+    return {
+      machineType: m?.machineType || '',
+      brand: m?.brand || '',
+      model: m?.model || '',
+    };
+  } catch {
+    return { machineType: '', brand: '', model: '' };
+  }
+}
+
 export default function ChatPage() {
   const lang = useLang();
-  const t = (zh: string, en: string) => (lang === 'zh' ? zh : en);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const t = useCallback((zh: string, en: string) => (lang === 'zh' ? zh : en), [lang]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadHistory);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentModel, setCurrentModel] = useState<string>('');
+  const [currentProvider, setCurrentProvider] = useState<'gemini' | 'deepseek' | ''>('');
+  const [machineType, setMachineType] = useState<string>(() => loadMeta().machineType);
+  const [brand, setBrand] = useState<string>(() => loadMeta().brand);
+  const [model, setModel] = useState<string>(() => loadMeta().model);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 从 localStorage 加载历史
+  // 保存历史
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMessages(parsed);
-        }
-      }
-    } catch {
-      // 忽略读取错误
-    }
-  }, []);
-
-  // 保存到 localStorage
-  useEffect(() => {
-    try {
-      if (messages.length > 0) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    } catch {
-      // 忽略写入错误
-    }
+      if (messages.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      else localStorage.removeItem(STORAGE_KEY);
+    } catch { /* ignore */ }
   }, [messages]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(META_KEY, JSON.stringify({ machineType, brand, model }));
+    } catch { /* ignore */ }
+  }, [machineType, brand, model]);
 
-  // 自动滚动到底部
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
-
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // 进入页面自动聚焦输入框
   useEffect(() => {
     const timer = window.setTimeout(() => textareaRef.current?.focus(), 100);
     return () => window.clearTimeout(timer);
   }, []);
 
-  // 发送消息
-  const sendMessage = useCallback(async (content: string) => {
-    const trimmed = content.trim();
-    if (!trimmed || isLoading) return;
+  const sendMessage = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || isLoading) return;
 
-    // 添加用户消息
-    const userMsg: ChatMessage = {
-      id: generateId(),
-      role: 'user',
-      content: trimmed,
-    };
+      const userMsg: ChatMessage = { id: generateId(), role: 'user', content: trimmed };
+      const loadingMsg: ChatMessage = { id: generateId(), role: 'loading', content: '' };
 
-    // 添加加载占位
-    const loadingMsg: ChatMessage = {
-      id: generateId(),
-      role: 'loading',
-      content: '',
-    };
+      setMessages((prev) => [...prev, userMsg, loadingMsg]);
+      setInput('');
+      setIsLoading(true);
 
-    setMessages((prev) => [...prev, userMsg, loadingMsg]);
-    setInput('');
-    setIsLoading(true);
+      try {
+        // 前端只发 user/assistant 历史；system prompt 由后端构造
+        const historyForApi = messages
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .slice(-20)
+          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
-    try {
-      // 构建 messages 数组（系统提示词 + 历史对话 + 当前用户消息）
-      const historyForApi = messages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({ role: m.role, content: m.content }));
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [...historyForApi, { role: 'user' as const, content: trimmed }],
+            machineType: machineType || undefined,
+            brand: brand || undefined,
+            model: model || undefined,
+          }),
+        });
 
-      const apiMessages = [
-        { role: 'system', content: CHAT_SYSTEM_PROMPT[lang] },
-        ...historyForApi,
-        { role: 'user', content: trimmed },
-      ];
+        let reply = '';
+        let modelName = '';
+        let provider: 'gemini' | 'deepseek' | '' = '';
+        if (response.ok) {
+          const data = await response.json();
+          reply = data?.choices?.[0]?.message?.content || '';
+          modelName = (data?.model as string) || '';
+          provider = (data?.provider as 'gemini' | 'deepseek') || '';
+        } else {
+          // 后端已脱敏，统一友好文案
+          const errData = await response.json().catch(() => null);
+          reply = errData?.error || t('智能诊断服务暂时无法连接，请稍后重试。', 'AI service unavailable, please try again later.');
+        }
 
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages }),
-      });
+        if (modelName) setCurrentModel(modelName);
+        if (provider) setCurrentProvider(provider);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === loadingMsg.id
+              ? {
+                  ...m,
+                  role: reply && response.ok ? ('assistant' as const) : ('error' as const),
+                  content: reply,
+                  model: modelName || undefined,
+                  provider: provider || undefined,
+                }
+              : m,
+          ),
+        );
+      } catch {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === loadingMsg.id
+              ? {
+                  ...m,
+                  role: 'error' as const,
+                  content: t('智能诊断服务暂时无法连接，请稍后重试。', 'AI service unavailable, please try again later.'),
+                }
+              : m,
+          ),
+        );
+        toast.error(t('对话服务暂不可用', 'Chat service unavailable'));
+      } finally {
+        setIsLoading(false);
+        setTimeout(() => textareaRef.current?.focus(), 0);
       }
+    },
+    [messages, isLoading, machineType, brand, model, t],
+  );
 
-      const data = await response.json();
-      const reply = data?.choices?.[0]?.message?.content || t('抱歉，未能获取有效回复，请稍后重试。', 'Sorry, no valid reply. Please try again.');
-      const modelName = (data?.model as string) || '';
-
-      // 记录当前模型（供顶部标识与消息标注）
-      if (modelName) {
-        setCurrentModel(modelName);
-      }
-
-      // 替换 loading 为真实回复
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === loadingMsg.id
-            ? { ...m, role: 'assistant' as const, content: reply, model: modelName || undefined }
-            : m,
-        ),
-      );
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      // 替换 loading 为错误消息
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === loadingMsg.id
-            ? { ...m, role: 'error' as const, content: t(`抱歉，对话服务暂时不可用，请稍后重试。\n${errorMsg}`, `Sorry, chat service is temporarily unavailable.\n${errorMsg}`) }
-            : m,
-        ),
-      );
-      toast.error(t('对话服务暂不可用', 'Chat service unavailable'));
-    } finally {
-      setIsLoading(false);
-      // 聚焦输入框
-      setTimeout(() => textareaRef.current?.focus(), 0);
-    }
-  }, [messages, isLoading]);
-
-  // 表单提交
   const handleSubmit = useCallback(
     (e: FormEvent) => {
       e.preventDefault();
@@ -174,7 +192,6 @@ export default function ChatPage() {
     [input, sendMessage],
   );
 
-  // 键盘快捷键
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -185,7 +202,6 @@ export default function ChatPage() {
     [input, sendMessage],
   );
 
-  // 快捷提问
   const handleQuickQuestion = useCallback(
     (question: string) => {
       sendMessage(question);
@@ -193,7 +209,6 @@ export default function ChatPage() {
     [sendMessage],
   );
 
-  // 清空对话
   const handleClear = useCallback(() => {
     setMessages([]);
     setIsLoading(false);
@@ -201,22 +216,29 @@ export default function ChatPage() {
   }, [t]);
 
   const isEmpty = messages.length === 0;
+  const typeOptions = lang === 'zh' ? MACHINE_TYPES_ZH : MACHINE_TYPES_EN;
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col bg-background">
       {/* 顶部工具栏 */}
       <div className="flex items-center justify-between border-b border-border/60 bg-card/50 px-4 py-3 md:px-6">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
             <Bot className="h-4 w-4" />
           </div>
-          <div>
-            <div className="text-sm font-semibold text-foreground">司农智机 · {t('故障诊断', 'Diagnosis')}</div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-foreground">司农智机 · {t('故障诊断', 'Diagnosis')}</div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {t('多模态智能体 · 专业农机诊断', 'Multimodal agent · expert diagnosis')}
-              {currentModel && (
+              <span className="truncate">{t('本地知识库 + LLM', 'Local KB + LLM')}</span>
+              {currentProvider && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-accent/60 px-1.5 py-0.5 text-[11px] text-foreground">
-                  <Sparkles className="h-3 w-3 text-primary" />
+                  <Cpu className="h-3 w-3 text-primary" />
+                  {currentProvider === 'gemini' ? 'Gemini' : 'DeepSeek'}
+                </span>
+              )}
+              {currentModel && (
+                <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-border/60 bg-accent/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                  <Sparkles className="h-3 w-3" />
                   {currentModel}
                 </span>
               )}
@@ -225,9 +247,9 @@ export default function ChatPage() {
         </div>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="secondary" size="sm" className="gap-1.5">
+            <Button variant="secondary" size="sm" className="gap-1.5 shrink-0">
               <Trash2 className="h-4 w-4" />
-              {t('清空对话', 'Clear chat')}
+              <span className="hidden sm:inline">{t('清空对话', 'Clear')}</span>
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
@@ -257,8 +279,37 @@ export default function ChatPage() {
               <h2 className="font-serif text-xl font-bold text-foreground">{pick(content.CHAT_WELCOME.title, lang)}</h2>
               <p className="mt-2 max-w-md text-sm text-muted-foreground">{pick(content.CHAT_WELCOME.desc, lang)}</p>
 
+              {/* 农机信息选择（可选） */}
+              <div className="mt-6 w-full max-w-xl rounded-xl border border-border/60 bg-card p-4 text-left">
+                <div className="mb-2 text-xs font-medium text-wheat">{t('农机信息（可选，帮助检索）', 'Machine info (optional, improves retrieval)')}</div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <select
+                    value={machineType}
+                    onChange={(e) => setMachineType(e.target.value)}
+                    className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                  >
+                    <option value="">{t('类型', 'Type')}</option>
+                    {typeOptions.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={brand}
+                    onChange={(e) => setBrand(e.target.value)}
+                    placeholder={t('品牌（选填）', 'Brand (optional)')}
+                    className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                  />
+                  <input
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder={t('型号（选填）', 'Model (optional)')}
+                    className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                  />
+                </div>
+              </div>
+
               {/* 快捷提问按钮 */}
-              <div className="mt-8 w-full">
+              <div className="mt-6 w-full">
                 <div className="mb-3 text-xs font-medium text-wheat">{t('您可以这样问', 'Try asking')}</div>
                 <div className="grid gap-2 md:grid-cols-2">
                   {content.CHAT_QUICK_QUESTIONS.map((q) => (
@@ -288,7 +339,7 @@ export default function ChatPage() {
                 </div>
               )}
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed md:max-w-[75%] ${
+                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed md:max-w-[75%] ${
                   msg.role === 'user'
                     ? 'rounded-tr-sm bg-primary text-primary-foreground'
                     : msg.role === 'error'
@@ -310,7 +361,7 @@ export default function ChatPage() {
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                     {msg.role === 'assistant' && msg.model && (
                       <div className="mt-1.5 text-right text-[11px] text-muted-foreground/70">
-                        {t('模型', 'Model')}: {msg.model}
+                        {msg.provider === 'gemini' ? 'Gemini' : msg.provider === 'deepseek' ? 'DeepSeek' : ''} · {msg.model}
                       </div>
                     )}
                   </div>

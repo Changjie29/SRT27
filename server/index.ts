@@ -1,52 +1,59 @@
+/**
+ * SRT27 HTTP 服务入口
+ *
+ * 职责：
+ * - Express 中间件（CORS、安全头、JSON 解析、限流）
+ * - /api/health
+ * - /api/chat：输入校验 → RAG → LLM Router → 统一错误响应
+ * - /api/model/tractor：本地 GLB 文件
+ *
+ * 注意：
+ * - API Key 仅从环境变量读取，绝不打印、绝不返回前端。
+ * - 用户侧错误信息永远是友好的中文/英文提示，不暴露 ECONNRESET/502 等技术细节。
+ */
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'node:path';
-import fs from 'node:fs';
-// Node fetch 默认不走系统代理；若环境存在 HTTPS_PROXY 则让所有外部请求走代理
+// Node fetch 默认不走系统代理；若配置了代理，全局启用（undici）
 import { setGlobalDispatcher, ProxyAgent } from 'undici';
 
-const _proxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY;
-if (_proxy) {
-  setGlobalDispatcher(new ProxyAgent(_proxy));
-  console.log('[server] 已启用外部代理:', _proxy.replace(/:[^:@/]+@/, ':****@'));
+const proxyUrl =
+  process.env.HTTPS_PROXY ||
+  process.env.https_proxy ||
+  process.env.HTTP_PROXY ||
+  process.env.http_proxy;
+if (proxyUrl) {
+  setGlobalDispatcher(new ProxyAgent(proxyUrl));
+  console.log('[server] proxy enabled (redacted)');
 }
 
-// 从 server/.env 加载环境变量（无论从项目根还是 dist 目录启动都有效）
 dotenv.config({ path: path.resolve(process.cwd(), 'server/.env') });
 
-// ==================== 知识库加载（严格 RAG） ====================
-// 启动时读取 server/knowledge/manual.md，作为回答的唯一事实依据
-let KNOWLEDGE_BASE = '(知识库未加载)';
-try {
-  KNOWLEDGE_BASE = fs.readFileSync(
-    path.resolve(process.cwd(), 'server/knowledge/manual.md'),
-    'utf-8',
-  );
-  console.log(`[server] 知识库已加载: ${KNOWLEDGE_BASE.length} 字符`);
-} catch (e) {
-  console.warn('[server] 知识库文件未找到，将无约束模式运行:', (e as Error).message);
-}
+// ---- 知识库 & LLM ----
+import { loadKnowledgeBase, stats as kbStats } from './knowledge/retriever';
+import { buildSystemPrompt } from './knowledge/systemPrompt';
+import { getLlmRouter } from './llm/router';
+import { ProviderError, type ChatMessage } from './llm/types';
+
+loadKnowledgeBase();
+const llm = getLlmRouter();
 
 const app = express();
-const PORT = process.env.PORT || 8787;
+const PORT = Number(process.env.PORT) || 8787;
 
-// ==================== 安全中间件 ====================
-// 信任代理（如有反向代理）
+// ---- 基础安全 ----
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
-// 安全响应头（轻量手写，替代 helmet）
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('X-XSS-Protection', '0');
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
   next();
 });
 
-// CORS 收紧：只允许本地前端
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -63,7 +70,7 @@ app.use(
 
 app.use(express.json({ limit: '256kb' }));
 
-// 简易内存限流：每 IP 每分钟最多 30 次对话
+// ---- 限流：每 IP 每分钟 30 次 /api/chat ----
 const rateBucket = new Map<string, { count: number; reset: number }>();
 app.use('/api/chat', (req, res, next) => {
   const ip = req.ip || 'unknown';
@@ -74,189 +81,121 @@ app.use('/api/chat', (req, res, next) => {
   } else {
     bucket.count++;
     if (bucket.count > 30) {
-      res.status(429).json({ error: '请求过于频繁，请稍后再试' });
+      res.status(429).json({ error: '请求过于频繁，请稍后再试', code: 'rate_limited' });
       return;
     }
   }
   next();
 });
 
-// 健康检查（不泄露敏感信息）
+// ---- 健康检查 ----
 app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({ ok: true, timestamp: new Date().toISOString() });
+  res.json({
+    ok: true,
+    timestamp: new Date().toISOString(),
+    knowledge: kbStats(),
+  });
 });
 
-// ==================== 对话接口 ====================
-// 前端调用 /api/chat，后端转发至 LLM API（OpenAI 兼容格式）
-// 优先 Gemini，不可达时自动回退 DeepSeek；API Key 仅存于服务端环境变量
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
-const GEMINI_MODEL = 'gemini-3.6-flash';
-const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
-const DEEPSEEK_MODEL = 'deepseek-v4-flash';
-
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+// ---- /api/chat ----
+interface ChatRequestBody {
+  messages?: ChatMessage[];
+  machineType?: string;
+  brand?: string;
+  model?: string;
 }
 
-// 带超时的 fetch（Gemini 不可达时避免长时间挂起）
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 25000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// 调用单个供应商，返回 OpenAI 兼容响应或 null（失败）
-async function callProvider(
-  apiUrl: string,
-  apiKey: string,
-  model: string,
-  messages: ChatMessage[],
-): Promise<{ status: number; data?: unknown; errText?: string } | null> {
-  try {
-    // 模型自述：让智能体知道自己运行的模型，被询问时如实回答
-    const selfIntro = `\n\n【模型信息】你当前由 ${apiUrl.includes('deepseek') ? 'DeepSeek' : 'Gemini'} 提供支持，运行模型名称：${model}。当用户询问"你是什么模型/用的是什么模型/背后是哪个大模型"等问题时，请直接如实告知模型名称（"${model}"），不要含糊其辞或编造。`;
-    const apiMessages: ChatMessage[] = messages.map((m, i) =>
-      i === 0 && m.role === 'system' ? { ...m, content: m.content + selfIntro } : m,
-    );
-    if (!apiMessages.some((m) => m.role === 'system')) {
-      apiMessages.unshift({ role: 'system', content: selfIntro.trim() });
-    }
-
-    const response = await fetchWithTimeout(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: apiMessages,
-        temperature: 0.3,
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      return { status: response.status, errText: errText.slice(0, 300) };
-    }
-    const data = await response.json();
-    return { status: 200, data };
-  } catch {
-    return null; // 连接失败 / 超时 → 交给回退逻辑
-  }
-}
+const USER_FRIENDLY_ERROR =
+  process.env.NODE_ENV === 'production'
+    ? '智能诊断服务暂时无法连接，请稍后重试。'
+    : '智能诊断服务暂时无法连接，请稍后重试。';
 
 app.post('/api/chat', async (req: Request, res: Response) => {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  const body = req.body as ChatRequestBody;
+  const { messages, machineType, brand, model } = body;
 
-  const { messages } = req.body as { messages?: ChatMessage[] };
-
-  // ---- 输入校验 ----
+  // 输入校验
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
-    res.status(400).json({ error: 'messages 参数缺失或格式错误' });
+    res.status(400).json({ error: 'messages 参数缺失或格式错误', code: 'bad_request' });
     return;
   }
-  if (messages.length > 50) {
-    res.status(400).json({ error: '对话轮次过多' });
+  if (messages.length > 40) {
+    res.status(400).json({ error: '对话轮次过多，请新开对话', code: 'too_long' });
     return;
   }
   const ROLES = new Set(['system', 'user', 'assistant']);
   for (const m of messages) {
     if (!m || typeof m !== 'object' || !ROLES.has(m.role) || typeof m.content !== 'string') {
-      res.status(400).json({ error: '消息格式错误' });
+      res.status(400).json({ error: '消息格式错误', code: 'bad_request' });
       return;
     }
     if (m.content.length > 2000) {
-      res.status(400).json({ error: '单条消息过长（上限 2000 字符）' });
+      res.status(400).json({ error: '单条消息过长（上限 2000 字符）', code: 'too_long' });
       return;
     }
   }
 
-  // 严格 RAG：把知识库 + 约束规则作为 system 前置注入
-  const ragSystem: ChatMessage = {
-    role: 'system',
-    content: `你是面向农机装备的故障诊断智能体。你必须严格依据下方《农机故障诊断知识库》回答问题。
+  // 前端不应发送 system；如发送，丢弃（后端拥有最终 system prompt）
+  const history = messages
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .slice(-20) // 最多保留 20 轮，避免无限增长
+    .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
-【硬性规则】
-1. 只允许使用知识库中出现的信息；不得编造机型参数、维修数据、故障代码、零件号。
-2. 若知识库中没有相关内容，必须直接回答："根据现有知识库，这部分资料不足，建议查阅该机型官方维修手册或联系售后。" 不要凭训练记忆猜测。
-3. 涉及维修操作时，末尾必须附带安全提示（停机、泄压、高温冷却等）。
-4. 用简洁、条理化的中文回答。
+  // 取最近一条 user 问题用于 RAG 检索
+  const lastUserMsg = [...history].reverse().find((m) => m.role === 'user');
+  const query = lastUserMsg?.content || '';
 
-《农机故障诊断知识库》：
-${KNOWLEDGE_BASE}`,
-  };
-  const fullMessages: ChatMessage[] = [ragSystem, ...messages];
-
-  // 1) 优先 Gemini
-  if (geminiKey) {
-    const result = await callProvider(GEMINI_API_URL, geminiKey, GEMINI_MODEL, fullMessages);
-    if (result && result.status === 200) {
-      res.json(result.data);
-      return;
-    }
-    if (result && result.status !== 200) {
-      // Gemini 业务错误（如鉴权失败）也记录并尝试回退
-      console.warn(`[chat] Gemini 请求失败(${result.status})，回退 DeepSeek:`, result.errText);
-    } else {
-      console.warn('[chat] Gemini 连接失败，回退 DeepSeek');
-    }
-  }
-
-  // 2) 回退 DeepSeek
-  if (deepseekKey) {
-    const result = await callProvider(DEEPSEEK_API_URL, deepseekKey, DEEPSEEK_MODEL, fullMessages);
-    if (result && result.status === 200) {
-      res.json(result.data);
-      return;
-    }
-    if (result && result.status !== 200) {
-      console.warn(`[chat] DeepSeek 失败(${result.status})`);
-      res.status(502).json({ error: '智能体服务暂时不可用，请稍后再试' });
-      return;
-    }
-  }
-
-  res.status(502).json({
-    error: '智能体服务暂时不可用',
+  // 构造 system prompt（含 RAG）
+  const { message: systemMsg, retrieved } = buildSystemPrompt({
+    query,
+    machineType,
+    brand,
+    model,
   });
+
+  const fullMessages: ChatMessage[] = [systemMsg, ...history];
+
+  try {
+    const outcome = await llm.chat(fullMessages);
+    // 返回 OpenAI 兼容结构 + 附加 provider/model/knowledge 元信息
+    res.json({
+      choices: [{ message: { role: 'assistant', content: outcome.result.content } }],
+      model: outcome.result.model,
+      provider: outcome.result.provider,
+      fellBack: outcome.fellBack,
+      knowledgeChunks: retrieved.length,
+    });
+  } catch (err) {
+    if (err instanceof ProviderError) {
+      console.warn(`[chat] provider error: ${err.provider}/${err.kind}`, err.detail);
+    } else {
+      console.error('[chat] unexpected error:', err);
+    }
+    res.status(502).json({ error: USER_FRIENDLY_ERROR, code: 'llm_unavailable' });
+  }
 });
 
-// ==================== 3D 模型接口 ====================
-// 提供 GLB 模型文件（开发时也可直接访问 public/models/tractor.glb）
+// ---- 3D 模型 ----
 app.get('/api/model/tractor', (_req: Request, res: Response) => {
   const modelPath = path.resolve(process.cwd(), 'public/models/tractor.glb');
   res.sendFile(modelPath, (err) => {
-    if (err) {
-      res.status(404).json({ error: '模型文件不存在' });
-    }
+    if (err) res.status(404).json({ error: '模型文件不存在' });
   });
 });
 
-// 全局错误处理中间件（兜底，不泄露堆栈）
+// ---- 全局错误兜底 ----
 app.use((err: Error, _req: Request, res: Response, _next: express.NextFunction) => {
   console.error('[server] unhandled:', err.message);
   res.status(500).json({ error: '服务器内部错误' });
 });
 
-// 仅在直接运行时监听（由 dev.mjs / dist-server 入口启动）
 if (process.env.NODE_ENV !== 'test') {
   const server = app.listen(PORT, () => {
     console.log(`[server] running on http://localhost:${PORT}`);
   });
-
-  // 优雅退出：收到信号时关闭连接，避免进程僵死
   const shutdown = (signal: string) => {
-    console.log(`[server] 收到 ${signal}，正在关闭...`);
+    console.log(`[server] received ${signal}, shutting down...`);
     server.close(() => process.exit(0));
-    // 兜底：5 秒后强制退出
     setTimeout(() => process.exit(1), 5000).unref();
   };
   process.on('SIGINT', () => shutdown('SIGINT'));
