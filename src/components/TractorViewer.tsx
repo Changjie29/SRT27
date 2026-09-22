@@ -9,7 +9,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import TractorModel from './TractorModel';
 
 // 相机初始配置（常量避免重渲染触发重置）
-const CAMERA_CONFIG = { position: [3, 2, 3] as [number, number, number], fov: 40 };
+const CAMERA_CONFIG = { position: [5.5, 3.5, 5.5] as [number, number, number], fov: 40 };
 
 // OrbitControls 内置自动旋转配置常量
 const AUTO_ROTATE_SPEED = 0.8;
