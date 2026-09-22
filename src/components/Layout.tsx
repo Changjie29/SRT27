@@ -1,20 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate, NavLink } from 'react-router-dom';
-import { Menu, X, MessageSquare } from 'lucide-react';
+import { Menu, X, MessageSquare, Sun, Moon, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-const NAV_ITEMS = [
+const NAV_ZH = [
   { label: '首页', path: '/' },
   { label: '多模态方案', hash: 'multimodal' },
   { label: '智能体架构', hash: 'architecture' },
   { label: '应用场景', hash: 'scenarios' },
 ];
+const NAV_EN = [
+  { label: 'Home', path: '/' },
+  { label: 'Multimodal', hash: 'multimodal' },
+  { label: 'Architecture', hash: 'architecture' },
+  { label: 'Scenarios', hash: 'scenarios' },
+];
 
 export function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('srt-theme');
+    if (saved === 'dark') return 'dark';
+    if (saved === 'light') return 'light';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+  const [lang, setLang] = useState<'zh' | 'en'>(() => (localStorage.getItem('srt-lang') as 'zh' | 'en') || 'zh');
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    document.documentElement.classList.remove('theme-light', 'theme-dark');
+    document.documentElement.classList.add(theme === 'dark' ? 'theme-dark' : 'theme-light');
+    localStorage.setItem('srt-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('srt-lang', lang);
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  }, [lang]);
+
+  const NAV_ITEMS = lang === 'zh' ? NAV_ZH : NAV_EN;
+  const chatLabel = lang === 'zh' ? '智能体对话' : 'Agent Chat';
 
   const handleHashNav = (hash: string) => {
     setMobileOpen(false);
@@ -22,20 +49,18 @@ export function Layout() {
       navigate(`/#${hash}`);
     } else {
       const el = document.getElementById(hash);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* 顶部导航栏 */}
       <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 md:px-6 lg:px-8">
           {/* Logo */}
           <NavLink to="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm transition-transform hover:scale-105">
               <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="2">
                 <circle cx="7" cy="16" r="3" />
                 <circle cx="17" cy="16" r="3" />
@@ -47,7 +72,7 @@ export function Layout() {
           </NavLink>
 
           {/* 桌面端导航 */}
-          <nav className="hidden items-center gap-8 md:flex">
+          <nav className="hidden items-center gap-6 md:flex">
             {NAV_ITEMS.map((item) =>
               item.hash ? (
                 <button
@@ -87,19 +112,37 @@ export function Layout() {
             <Button asChild size="sm" className="gap-1.5">
               <NavLink to="/chat">
                 <MessageSquare className="h-4 w-4" />
-                智能体对话
+                {chatLabel}
               </NavLink>
             </Button>
           </nav>
 
-          {/* 移动端菜单按钮 */}
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-border md:hidden"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="菜单"
-          >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {/* 右侧工具按钮（主题 + 语言 + 移动端菜单） */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground transition-all hover:bg-accent hover:text-primary hover:scale-105"
+              aria-label="切换主题"
+              title={theme === 'dark' ? '切到亮色' : '切到暗色'}
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+              className="flex h-9 items-center gap-1 rounded-full border border-border px-3 text-xs font-medium text-muted-foreground transition-all hover:bg-accent hover:text-primary hover:scale-105"
+              aria-label="切换语言"
+            >
+              <Globe className="h-4 w-4" />
+              {lang === 'zh' ? 'EN' : '中'}
+            </button>
+            <button
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-border md:hidden"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label="菜单"
+            >
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
 
         {/* 移动端导航抽屉 */}
@@ -135,7 +178,7 @@ export function Layout() {
               <Button asChild size="sm" className="mt-2 gap-1.5">
                 <NavLink to="/chat" onClick={() => setMobileOpen(false)}>
                   <MessageSquare className="h-4 w-4" />
-                  智能体对话
+                  {chatLabel}
                 </NavLink>
               </Button>
             </nav>

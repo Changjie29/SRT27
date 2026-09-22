@@ -84,6 +84,61 @@
   --spacing: 0.25rem;
 }
 
+/* ===== 暗色主题：跟随系统自动切换 ===== */
+@media (prefers-color-scheme: dark) {
+  :root:not(.theme-light) {
+    --background: hsl(130 18% 10%);
+    --foreground: hsl(40 30% 92%);
+    --card: hsl(130 16% 14% / 0.92);
+    --card-foreground: hsl(40 30% 92%);
+    --popover: hsl(130 16% 14%);
+    --popover-foreground: hsl(40 30% 92%);
+    --primary: hsl(130 35% 45%);
+    --primary-foreground: hsl(130 20% 8%);
+    --secondary: hsl(130 15% 20%);
+    --secondary-foreground: hsl(40 30% 90%);
+    --muted: hsl(130 12% 20%);
+    --muted-foreground: hsl(40 15% 65%);
+    --accent: hsl(130 20% 22%);
+    --accent-foreground: hsl(130 40% 70%);
+    --wheat: hsl(41 55% 58%);
+    --wheat-foreground: hsl(130 18% 10%);
+    --border: hsl(130 12% 25%);
+    --input: hsl(130 12% 25%);
+    --ring: hsl(130 35% 45%);
+    --elevate-1: rgba(255,255,255, .04);
+    --elevate-2: rgba(255,255,255, .08);
+  }
+}
+
+/* 手动切到暗色 */
+:root.theme-dark {
+  --background: hsl(130 18% 10%);
+  --foreground: hsl(40 30% 92%);
+  --card: hsl(130 16% 14% / 0.92);
+  --card-foreground: hsl(40 30% 92%);
+  --popover: hsl(130 16% 14%);
+  --popover-foreground: hsl(40 30% 92%);
+  --primary: hsl(130 35% 45%);
+  --primary-foreground: hsl(130 20% 8%);
+  --secondary: hsl(130 15% 20%);
+  --secondary-foreground: hsl(40 30% 90%);
+  --muted: hsl(130 12% 20%);
+  --muted-foreground: hsl(40 15% 65%);
+  --accent: hsl(130 20% 22%);
+  --accent-foreground: hsl(130 40% 70%);
+  --wheat: hsl(41 55% 58%);
+  --wheat-foreground: hsl(130 18% 10%);
+  --border: hsl(130 12% 25%);
+  --input: hsl(130 12% 25%);
+  --ring: hsl(130 35% 45%);
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .08);
+}
+
+/* 手动锁定亮色 */
+:root.theme-light { color-scheme: light; }
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
