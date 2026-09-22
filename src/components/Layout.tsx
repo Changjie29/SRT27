@@ -53,9 +53,10 @@ export function Layout() {
                 <button
                   key={item.hash}
                   onClick={() => handleHashNav(item.hash!)}
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
+                  className="group relative text-sm text-muted-foreground transition-colors hover:text-primary"
                 >
                   {item.label}
+                  <span className="absolute -bottom-1 left-0 h-0.5 w-0 rounded-full bg-primary transition-all duration-300 group-hover:w-full" />
                 </button>
               ) : (
                 <NavLink
@@ -64,12 +65,22 @@ export function Layout() {
                   end={item.path === '/'}
                   className={({ isActive }) =>
                     cn(
-                      'text-sm transition-colors hover:text-primary',
+                      'group relative text-sm transition-colors hover:text-primary',
                       isActive ? 'text-primary font-semibold' : 'text-muted-foreground',
                     )
                   }
                 >
-                  {item.label}
+                  {({ isActive }) => (
+                    <>
+                      {item.label}
+                      <span
+                        className={cn(
+                          'absolute -bottom-1 left-0 h-0.5 rounded-full bg-primary transition-all duration-300',
+                          isActive ? 'w-full' : 'w-0 group-hover:w-full',
+                        )}
+                      />
+                    </>
+                  )}
                 </NavLink>
               ),
             )}

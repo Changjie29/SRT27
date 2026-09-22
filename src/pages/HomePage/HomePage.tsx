@@ -6,17 +6,25 @@ import SimulationSection from './sections/SimulationSection';
 import TechRouteSection from './sections/TechRouteSection';
 import ScenariosSection from './sections/ScenariosSection';
 import ClosingSection from './sections/ClosingSection';
+import SectionDivider from '@/components/SectionDivider';
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
       <HeroSection />
+      <SectionDivider variant="leaf" />
       <PainPointsSection />
+      <SectionDivider variant="dots" />
       <MultimodalSection />
+      <SectionDivider variant="leaf" />
       <ArchitectureSection />
+      <SectionDivider variant="dots" />
       <SimulationSection />
+      <SectionDivider variant="leaf" />
       <TechRouteSection />
+      <SectionDivider variant="dots" />
       <ScenariosSection />
+      <SectionDivider variant="line" />
       <ClosingSection />
     </div>
   );
