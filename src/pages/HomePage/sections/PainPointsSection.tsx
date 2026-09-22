@@ -1,7 +1,8 @@
 import { AlertTriangle, Brain, ScanLine } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { motion } from 'framer-motion';
-import { PAIN_POINTS, PAIN_STATS } from '@/data/content';
+import content, { pick } from '@/data/content';
+import { useLang } from '@/hooks/useLang';
 
 const ICON_MAP: Record<string, typeof AlertTriangle> = {
   AlertTriangle,
@@ -10,25 +11,27 @@ const ICON_MAP: Record<string, typeof AlertTriangle> = {
 };
 
 export default function PainPointsSection() {
+  const lang = useLang();
+  const t = (zh: string, en: string) => (lang === 'zh' ? zh : en);
   return (
     <section id="painpoints" className="w-full py-16 md:py-20">
       <div className="mx-auto max-w-6xl px-4 md:px-6 lg:px-8">
         {/* 标题 */}
         <div className="mb-12 text-center">
-          <div className="mb-3 text-sm font-medium text-wheat">行业痛点</div>
+          <div className="mb-3 text-sm font-medium text-wheat">{t('行业痛点', 'Industry Pain Points')}</div>
           <h2 className="font-serif text-2xl font-bold text-foreground md:text-3xl">
-            传统农机故障诊断面临的三大挑战
+            {t('传统农机故障诊断面临的三大挑战', 'Three Challenges of Traditional Fault Diagnosis')}
           </h2>
           <div className="mx-auto mt-4 h-px w-12 bg-wheat" />
         </div>
 
         {/* 三痛点卡片 */}
         <div className="grid gap-6 md:grid-cols-3">
-          {PAIN_POINTS.map((item, i) => {
+          {content.PAIN_POINTS.map((item, i) => {
             const Icon = ICON_MAP[item.icon] || AlertTriangle;
             return (
               <motion.div
-                key={item.title}
+                key={pick(item.title, lang)}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -39,8 +42,8 @@ export default function PainPointsSection() {
                     <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-primary/10 text-primary">
                       <Icon className="h-6 w-6" />
                     </div>
-                    <h3 className="mb-2 font-serif text-lg font-semibold text-foreground">{item.title}</h3>
-                    <p className="text-sm leading-relaxed text-muted-foreground">{item.desc}</p>
+                    <h3 className="mb-2 font-serif text-lg font-semibold text-foreground">{pick(item.title, lang)}</h3>
+                    <p className="text-sm leading-relaxed text-muted-foreground">{pick(item.desc, lang)}</p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -50,9 +53,9 @@ export default function PainPointsSection() {
 
         {/* 数据条 */}
         <div className="mt-16 grid gap-8 md:grid-cols-3">
-          {PAIN_STATS.map((stat, i) => (
+          {content.PAIN_STATS.map((stat, i) => (
             <motion.div
-              key={stat.label}
+              key={pick(stat.label, lang)}
               initial={{ opacity: 0, width: 0 }}
               whileInView={{ opacity: 1, width: '100%' }}
               viewport={{ once: true }}
@@ -60,7 +63,7 @@ export default function PainPointsSection() {
               className="space-y-2"
             >
               <div className="flex items-baseline justify-between">
-                <span className="text-sm text-muted-foreground">{stat.label}</span>
+                <span className="text-sm text-muted-foreground">{pick(stat.label, lang)}</span>
                 <span className="font-serif text-2xl font-bold text-primary">
                   {stat.value}
                   <span className="text-base">%</span>

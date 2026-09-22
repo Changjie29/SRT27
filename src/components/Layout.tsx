@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { Menu, X, MessageSquare, Sun, Moon, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useLang, setLang } from '@/hooks/useLang';
 
 const NAV_ZH = [
   { label: '首页', path: '/' },
@@ -25,7 +26,7 @@ export function Layout() {
     if (saved === 'light') return 'light';
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
-  const [lang, setLang] = useState<'zh' | 'en'>(() => (localStorage.getItem('srt-lang') as 'zh' | 'en') || 'zh');
+  const lang = useLang();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -34,11 +35,6 @@ export function Layout() {
     document.documentElement.classList.add(theme === 'dark' ? 'theme-dark' : 'theme-light');
     localStorage.setItem('srt-theme', theme);
   }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem('srt-lang', lang);
-    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
-  }, [lang]);
 
   const NAV_ITEMS = lang === 'zh' ? NAV_ZH : NAV_EN;
   const chatLabel = lang === 'zh' ? '智能体对话' : 'Agent Chat';

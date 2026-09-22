@@ -1,10 +1,13 @@
 import { ArrowRight, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { CLOSING_CTA, FOOTER_REFERENCES } from '@/data/content';
+import content, { pick } from '@/data/content';
+import { useLang } from '@/hooks/useLang';
 
 export default function ClosingSection() {
   const navigate = useNavigate();
+  const lang = useLang();
+  const t = (zh: string, en: string) => (lang === 'zh' ? zh : en);
 
   return (
     <section className="w-full pt-16 pb-0 md:pt-20">
@@ -18,10 +21,10 @@ export default function ClosingSection() {
 
           <div className="relative">
             <h2 className="font-serif text-2xl font-bold text-primary-foreground md:text-3xl">
-              {CLOSING_CTA.title}
+              {pick(content.CLOSING_CTA.title, lang)}
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-sm text-primary-foreground/80 md:text-base">
-              {CLOSING_CTA.desc}
+              {pick(content.CLOSING_CTA.desc, lang)}
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <Button
@@ -30,7 +33,7 @@ export default function ClosingSection() {
                 onClick={() => navigate('/chat')}
                 className="gap-2 text-primary"
               >
-                {CLOSING_CTA.buttonText}
+                {pick(content.CLOSING_CTA.buttonText, lang)}
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -55,16 +58,18 @@ export default function ClosingSection() {
                 <span className="font-serif text-lg font-bold text-foreground">司农智机</span>
               </div>
               <p className="mt-3 max-w-sm text-sm text-muted-foreground">
-                面向农机装备的多模态故障诊断智能体，融合感知信号、大语言模型与结构仿真，
-                为农业生产提供专业、可靠、可解释的故障诊断服务。
+                {t(
+                  '面向农机装备的多模态故障诊断智能体，融合感知信号、大语言模型与结构仿真，为农业生产提供专业、可靠、可解释的故障诊断服务。',
+                  'A multimodal fault-diagnosis agent for agricultural machinery, fusing sensing, LLMs and structural simulation for professional, reliable and explainable diagnostics.',
+                )}
               </p>
             </div>
 
             <div>
-              <h4 className="mb-3 font-serif text-sm font-semibold text-foreground">参考来源</h4>
+              <h4 className="mb-3 font-serif text-sm font-semibold text-foreground">{t('参考来源', 'References')}</h4>
               <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                {FOOTER_REFERENCES.map((ref) => (
-                  <li key={ref.name}>
+                {content.FOOTER_REFERENCES.map((ref) => (
+                  <li key={pick(ref.name, lang)}>
                     <a
                       href={ref.href}
                       target="_blank"
@@ -72,7 +77,7 @@ export default function ClosingSection() {
                       className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary"
                     >
                       <ExternalLink className="h-3 w-3 shrink-0" />
-                      {ref.name}
+                      {pick(ref.name, lang)}
                     </a>
                   </li>
                 ))}
@@ -81,8 +86,8 @@ export default function ClosingSection() {
           </div>
 
           <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-border/50 pt-6 text-xs text-muted-foreground/70 md:flex-row">
-            <div>© 2026 司农智机 · 农机故障诊断智能体</div>
-            <div>所有数据仅供演示参考 · 实际诊断请结合专业技术人员判断</div>
+            <div>{t('© 2026 司农智机 · 农机故障诊断智能体', '© 2026 Sinong Zhiji · Agri Fault Diagnosis Agent')}</div>
+            <div>{t('所有数据仅供演示参考 · 实际诊断请结合专业技术人员判断', 'Data for demo only · consult qualified technicians for real diagnosis')}</div>
           </div>
         </div>
       </footer>

@@ -16,7 +16,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { CHAT_QUICK_QUESTIONS, CHAT_WELCOME, CHAT_SYSTEM_PROMPT } from '@/data/content';
+import content, { pick, CHAT_SYSTEM_PROMPT } from '@/data/content';
+import { useLang } from '@/hooks/useLang';
 
 interface ChatMessage {
   id: string;
@@ -32,6 +33,8 @@ function generateId() {
 }
 
 export default function ChatPage() {
+  const lang = useLang();
+  const t = (zh: string, en: string) => (lang === 'zh' ? zh : en);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -112,7 +115,7 @@ export default function ChatPage() {
         .map((m) => ({ role: m.role, content: m.content }));
 
       const apiMessages = [
-        { role: 'system', content: CHAT_SYSTEM_PROMPT },
+        { role: 'system', content: CHAT_SYSTEM_PROMPT[lang] },
         ...historyForApi,
         { role: 'user', content: trimmed },
       ];
@@ -124,11 +127,11 @@ export default function ChatPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`请求失败：${response.status}`);
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
-      const reply = data?.choices?.[0]?.message?.content || '抱歉，未能获取有效回复，请稍后重试。';
+      const reply = data?.choices?.[0]?.message?.content || t('抱歉，未能获取有效回复，请稍后重试。', 'Sorry, no valid reply. Please try again.');
       const modelName = (data?.model as string) || '';
 
       // 记录当前模型（供顶部标识与消息标注）
@@ -145,16 +148,16 @@ export default function ChatPage() {
         ),
       );
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '未知错误';
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       // 替换 loading 为错误消息
       setMessages((prev) =>
         prev.map((m) =>
           m.id === loadingMsg.id
-            ? { ...m, role: 'error' as const, content: `抱歉，对话服务暂时不可用，请稍后重试。\n${errorMsg}` }
+            ? { ...m, role: 'error' as const, content: t(`抱歉，对话服务暂时不可用，请稍后重试。\n${errorMsg}`, `Sorry, chat service is temporarily unavailable.\n${errorMsg}`) }
             : m,
         ),
       );
-      toast.error('对话服务暂不可用');
+      toast.error(t('对话服务暂不可用', 'Chat service unavailable'));
     } finally {
       setIsLoading(false);
       // 聚焦输入框
@@ -194,8 +197,8 @@ export default function ChatPage() {
   const handleClear = useCallback(() => {
     setMessages([]);
     setIsLoading(false);
-    toast.success('对话已清空');
-  }, []);
+    toast.success(t('对话已清空', 'Chat cleared'));
+  }, [t]);
 
   const isEmpty = messages.length === 0;
 
@@ -208,9 +211,9 @@ export default function ChatPage() {
             <Bot className="h-4 w-4" />
           </div>
           <div>
-            <div className="text-sm font-semibold text-foreground">司农智机 · 故障诊断</div>
+            <div className="text-sm font-semibold text-foreground">司农智机 · {t('故障诊断', 'Diagnosis')}</div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              多模态智能体 · 专业农机诊断
+              {t('多模态智能体 · 专业农机诊断', 'Multimodal agent · expert diagnosis')}
               {currentModel && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-accent/60 px-1.5 py-0.5 text-[11px] text-foreground">
                   <Sparkles className="h-3 w-3 text-primary" />
@@ -224,19 +227,19 @@ export default function ChatPage() {
           <AlertDialogTrigger asChild>
             <Button variant="secondary" size="sm" className="gap-1.5">
               <Trash2 className="h-4 w-4" />
-              清空对话
+              {t('清空对话', 'Clear chat')}
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>确认清空对话？</AlertDialogTitle>
+              <AlertDialogTitle>{t('确认清空对话？', 'Clear all messages?')}</AlertDialogTitle>
               <AlertDialogDescription>
-                清空后当前所有对话记录将被删除，且无法恢复。
+                {t('清空后当前所有对话记录将被删除，且无法恢复。', 'All current messages will be deleted and cannot be recovered.')}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction onClick={handleClear}>确认清空</AlertDialogAction>
+              <AlertDialogCancel>{t('取消', 'Cancel')}</AlertDialogCancel>
+              <AlertDialogAction onClick={handleClear}>{t('确认清空', 'Clear')}</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -251,21 +254,21 @@ export default function ChatPage() {
               <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <Sparkles className="h-7 w-7" />
               </div>
-              <h2 className="font-serif text-xl font-bold text-foreground">{CHAT_WELCOME.title}</h2>
-              <p className="mt-2 max-w-md text-sm text-muted-foreground">{CHAT_WELCOME.desc}</p>
+              <h2 className="font-serif text-xl font-bold text-foreground">{pick(content.CHAT_WELCOME.title, lang)}</h2>
+              <p className="mt-2 max-w-md text-sm text-muted-foreground">{pick(content.CHAT_WELCOME.desc, lang)}</p>
 
               {/* 快捷提问按钮 */}
               <div className="mt-8 w-full">
-                <div className="mb-3 text-xs font-medium text-wheat">您可以这样问</div>
+                <div className="mb-3 text-xs font-medium text-wheat">{t('您可以这样问', 'Try asking')}</div>
                 <div className="grid gap-2 md:grid-cols-2">
-                  {CHAT_QUICK_QUESTIONS.map((q) => (
+                  {content.CHAT_QUICK_QUESTIONS.map((q) => (
                     <button
-                      key={q}
-                      onClick={() => handleQuickQuestion(q)}
+                      key={pick(q, lang)}
+                      onClick={() => handleQuickQuestion(pick(q, lang))}
                       disabled={isLoading}
                       className="rounded-md border border-border/60 bg-card p-3 text-left text-sm text-foreground transition-all hover:border-primary/40 hover:bg-accent/50 hover:text-primary disabled:opacity-50"
                     >
-                      {q}
+                      {pick(q, lang)}
                     </button>
                   ))}
                 </div>
@@ -298,7 +301,7 @@ export default function ChatPage() {
                 {msg.role === 'loading' ? (
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>正在思考...</span>
+                    <span>{t('正在思考...', 'Thinking...')}</span>
                   </div>
                 ) : msg.role === 'user' ? (
                   <div className="whitespace-pre-wrap">{msg.content}</div>
@@ -307,7 +310,7 @@ export default function ChatPage() {
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                     {msg.role === 'assistant' && msg.model && (
                       <div className="mt-1.5 text-right text-[11px] text-muted-foreground/70">
-                        模型：{msg.model}
+                        {t('模型', 'Model')}: {msg.model}
                       </div>
                     )}
                   </div>
@@ -333,7 +336,7 @@ export default function ChatPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="描述您遇到的农机故障现象..."
+              placeholder={t('描述您遇到的农机故障现象...', 'Describe the fault symptom...')}
               className="min-h-[60px] resize-none"
               rows={2}
               disabled={isLoading}
@@ -343,13 +346,13 @@ export default function ChatPage() {
               size="icon"
               disabled={!input.trim() || isLoading}
               className="shrink-0"
-              aria-label="发送"
+              aria-label={t('发送', 'Send')}
             >
               <Send className="h-4 w-4" />
             </Button>
           </div>
           <div className="mt-2 text-xs text-muted-foreground">
-            按 Enter 发送，Shift + Enter 换行
+            {t('按 Enter 发送，Shift + Enter 换行', 'Enter to send, Shift+Enter for newline')}
           </div>
         </form>
       </div>
