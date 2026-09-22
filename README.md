@@ -38,9 +38,14 @@ DEEPSEEK_API_KEY=sk-...
 
 # 服务端口（默认 8787）
 PORT=8787
+
+# 可选：代理（写在这里也能被识别；服务启动时先加载本文件再读代理变量）
+# HTTPS_PROXY=http://127.0.0.1:7890
+# HTTP_PROXY=http://127.0.0.1:7890
 ```
 
 > 两个 key 都配最稳：后端按网络环境自动选主选，失败自动回退。只配一个也能跑。
+> 服务启动顺序：先加载 `server/.env`，再读取 `HTTPS_PROXY/https_proxy/HTTP_PROXY/http_proxy` 决定走 Gemini 还是 DeepSeek。
 
 ### 3. 启动开发服务
 

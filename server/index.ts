@@ -15,9 +15,14 @@ import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'node:path';
-// Node fetch 默认不走系统代理；若配置了代理，全局启用（undici）
-import { setGlobalDispatcher, ProxyAgent } from 'undici';
 
+// 1) 必须先加载 server/.env，再读取任何代理/Key 环境变量。
+//    这样即使 HTTPS_PROXY 等代理配置写在 .env 里，也能被后续 detectProxy() 正确识别。
+dotenv.config({ path: path.resolve(process.cwd(), 'server/.env') });
+
+// 2) Node fetch 默认不走系统代理；若配置了代理，全局启用（undici）。
+//    此时 process.env.HTTPS_PROXY 等已包含 .env 中的值。
+import { setGlobalDispatcher, ProxyAgent } from 'undici';
 const proxyUrl =
   process.env.HTTPS_PROXY ||
   process.env.https_proxy ||
@@ -27,8 +32,6 @@ if (proxyUrl) {
   setGlobalDispatcher(new ProxyAgent(proxyUrl));
   console.log('[server] proxy enabled (redacted)');
 }
-
-dotenv.config({ path: path.resolve(process.cwd(), 'server/.env') });
 
 // ---- 知识库 & LLM ----
 import { loadKnowledgeBase, stats as kbStats } from './knowledge/retriever';
