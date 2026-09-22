@@ -79,6 +79,26 @@ export default function TractorViewer() {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const autoRotateTimerRef = useRef<number | null>(null);
 
+  // 跟随暗色模式：监听 html 上的 theme-dark/theme-light class
+  const [isDark, setIsDark] = useState(
+    () =>
+      document.documentElement.classList.contains('theme-dark') ||
+      (!document.documentElement.classList.contains('theme-light') &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches),
+  );
+  useEffect(() => {
+    const update = () =>
+      setIsDark(
+        document.documentElement.classList.contains('theme-dark') ||
+          (!document.documentElement.classList.contains('theme-light') &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches),
+      );
+    const observer = new MutationObserver(update);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', update);
+    return () => observer.disconnect();
+  }, []);
+
   // 通过 ref 直接启停 OrbitControls 内置自动旋转
   // 不用 React state 驱动 prop，避免 prop 变化触发组件重渲染导致相机重置
   const setAutoRotateByRef = useCallback((enabled: boolean) => {
@@ -202,8 +222,8 @@ export default function TractorViewer() {
           gl={{ antialias: true, alpha: false }}
           dpr={[1, 2]}
         >
-          <color attach="background" args={['#F5F1E8']} />
-          <fog attach="fog" args={['#F5F1E8', 8, 20]} />
+          <color attach="background" args={[isDark ? '#1a2420' : '#F5F1E8']} />
+          <fog attach="fog" args={[isDark ? '#1a2420' : '#F5F1E8', 8, 20]} />
 
           {/* 程序化环境光照（零网络依赖，替代 drei Environment preset 的 HDR 贴图） */}
           <ProgrammaticEnvironment />
@@ -224,10 +244,10 @@ export default function TractorViewer() {
             args={[20, 20]}
             cellSize={1}
             cellThickness={0.5}
-            cellColor="#D4CFC4"
+            cellColor={isDark ? '#2e3a34' : '#D4CFC4'}
             sectionSize={5}
             sectionThickness={1}
-            sectionColor="#B8B1A3"
+            sectionColor={isDark ? '#4a5a50' : '#B8B1A3'}
             fadeDistance={15}
             fadeStrength={1}
             position={[0, -0.4, 0]}
