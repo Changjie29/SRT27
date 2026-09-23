@@ -31,10 +31,10 @@ npm install
 
 ```env
 # Gemini（有代理环境优先使用；OAuth token 或 API key）
-GEMINI_API_KEY=AQ.Ab8RN6...
+GEMINI_API_KEY=your_gemini_api_key
 
 # DeepSeek（无代理环境优先使用；sk- 开头）
-DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_API_KEY=your_deepseek_api_key
 
 # 服务端口（默认 8787）
 PORT=8787
@@ -187,7 +187,6 @@ SRT27/
 │   ├── build.sh                    # 先 build:client 再 build:server
 │   └── cloud-pull.sh               # 云电脑上执行的 git pull 脚本
 │
-├── public/                           # 见上（3D 模型等公共资源）
 ├── index.html                        # Vite HTML 入口
 ├── package.json                     # 依赖与 scripts（dev/typecheck/lint/build）
 ├── vite.config.ts                   # Vite 配置（代理 /api → 8787）
@@ -277,10 +276,9 @@ SRT27/
 
 ## 同步部署
 
-- 本地工程目录：`/Users/zhaichangjie/DoubaoWork/SRT网站/农机诊断平台/`
-- Git 仓库：`/Users/zhaichangjie/myself/NJAU/SRT-27/SRT27/`
 - GitHub：https://github.com/Changjie29/SRT27
-- 同步脚本：`/Users/zhaichangjie/DoubaoWork/SRT网站/sync.sh`（rsync 排除 `.env`，再 git add/commit/push）
+- 本地工作区：clone 仓库后在根目录执行 `npm install` 即可开发，无需额外配置路径
+- 同步方式：本地改完后 commit 并 push 到 `main`，云环境通过 git pull 自动同步
 
 ---
 

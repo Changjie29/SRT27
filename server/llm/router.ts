@@ -4,9 +4,10 @@
  * 选择策略（按当前网络环境）：
  *   - 检测到代理（HTTPS_PROXY / https_proxy / HTTP_PROXY / http_proxy）→ Gemini 优先
  *   - 否则                                          → DeepSeek 优先
- *   - 主选失败（网络/超时/服务端错误）              → 自动回退另一个
- *   - 鉴权失败（401/403）不回退，直接抛给上层（key 配错了）
+ *   - 主选失败（网络/超时/服务端错误/鉴权 401/403）  → 自动回退另一个
+ *   - 两个都失败                                    → 抛 ProviderError 给上层
  *
+ * 鉴权失败也会尝试另一个 provider，方便排查 key 配置问题。
  * 日志只打印 provider 名与错误类别，绝不打印 API Key。
  */
 import { detectProxy } from './http';
@@ -92,7 +93,7 @@ export class LlmRouter {
       return { result, primary: primary.name, fellBack: false };
     } catch (err) {
       if (err instanceof ProviderError) {
-        // 鉴权错误不回退（key 配错了，换 provider 也无意义——但仍尝试另一个，方便用户）
+        // 任何错误（含鉴权失败）都尝试另一个 provider，方便排查 key 问题
         log(`primary ${primary.name} failed (${err.kind}), trying ${secondary.name}`, err.detail);
       } else {
         log(`primary ${primary.name} unexpected error`, err);
