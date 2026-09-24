@@ -53,7 +53,7 @@ PORT=8787
 npm run dev
 ```
 
-- 前端：http://localhost:5173
+- 前端：http://localhost:8080
 - 后端：http://localhost:8787
 - 健康检查：http://localhost:8787/api/health
 
