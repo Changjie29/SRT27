@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import modelUrl from './tractor-transformed.glb?url';
+// 模型统一存放在 public/models/tractor.glb（与 /api/model/tractor 同一份文件）
+const modelUrl = '/models/tractor.glb';
 
 interface TractorModelProps {
   onLoaded?: (object: THREE.Object3D) => void;
