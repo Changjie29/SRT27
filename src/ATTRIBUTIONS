@@ -1,0 +1,46 @@
+# Third-party attribution / 第三方来源
+
+## ROS Agriculture - lawn_tractor
+
+Repository: https://github.com/ros-agriculture/lawn_tractor
+License: MIT
+Usage in SRT27: tractor simulation mesh / URDF / reference material.
+
+## ROS Agriculture - tractor_localization
+
+Repository: https://github.com/ros-agriculture/tractor_localization
+License: Apache-2.0
+Usage in SRT27: GPS + IMU localization reference material.
+
+## MathWorks - Tractor-Simscape
+
+Repository: https://github.com/simscape/Tractor-Simscape
+License: BSD-3-Clause
+Usage in SRT27: tractor system modeling / energy flow / tire-soil interaction reference.
+
+## K-Vehicles
+
+Repository: https://github.com/leoxthomas/K-Vehicles/
+Repository license: GPL-3.0
+Usage in SRT27: candidate tractor/machinery visual dataset reference. Verify the dataset-specific license before redistributing any images/labels.
+
+## AgriVehicle765
+
+Repository: https://github.com/VisionMillionDataStudio/AgriVehicle765
+Usage in SRT27: candidate agricultural machinery visual dataset reference. No clear standard OSS license was identified on the repository page, so assets are not copied by default.
+
+## Rotating-machine-fault-data-set
+
+Repository: https://github.com/hustcxl/Rotating-machine-fault-data-set
+Repository license: MIT
+Usage in SRT27: index/reference of public mechanical fault datasets. Underlying datasets retain their own licenses.
+
+## HUSTgearbox dataset
+
+Repository: https://github.com/CHAOZHAO-1/HUSTgearbox-dataset
+Usage in SRT27: gearbox fault-diagnosis dataset reference. Check author instructions and dataset terms before redistribution.
+
+## HUST transmission system dataset
+
+Repository: https://github.com/CHAOZHAO-1/HUSTTransmissionsystem-dataset
+Usage in SRT27: transmission-system fault-diagnosis dataset reference. Check author instructions and dataset terms before redistribution.
