@@ -38,6 +38,9 @@ export default function TractorModel({ onLoaded }: TractorModelProps) {
     // 强制重置缩放：useGLTF 全局缓存 scene 可能被历史挂载污染（继承旧缩放），
     // 必须先归一到 1 再基于原始包围盒计算，否则 scale 会算成 1 导致模型不缩放
     model.scale.setScalar(1);
+    // 强制重置 position 到原点：SkeletonUtils.clone 会保留原 scene 的 position，
+    // 若原 scene 带非零 position，后续世界坐标包围盒会错位导致贴地失败（模型悬空）
+    model.position.set(0, 0, 0);
     model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
