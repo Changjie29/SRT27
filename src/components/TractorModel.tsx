@@ -1,105 +1,88 @@
 import { useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
+import { SkeletonUtils } from 'three-stdlib';
 import * as THREE from 'three';
-// 模型统一存放在 public/models/tractor.glb（与 /api/model/tractor 同一份文件）
-const modelUrl = '/models/tractor.glb';
+
+// 模型统一存放在 public/models/tractor.glb，前端唯一引用路径
+const MODEL_URL = '/models/tractor.glb';
 
 interface TractorModelProps {
   onLoaded?: (object: THREE.Object3D) => void;
 }
 
-// 允许保留的标准 three.js 节点类型
-const KEEP_TYPES = new Set([
-  'Scene',
-  'Group',
-  'Object3D',
-  'Mesh',
-  'SkinnedMesh',
-  'Bone',
-  'Line',
-  'LineSegments',
-  'Points',
-  'Sprite',
-  'InstancedMesh',
-]);
-
 /**
  * 拖拉机 3D 模型组件
- * - 使用 @react-three/drei 的 useGLTF 加载 GLB 模型
- * - 模型通过 import 引入（?url），由 Vite 打包
- * - 加载后清理非标准节点（如 Sketchfab 模型中的 Svg 扩展节点），
- *   避免 R3F 对未知类型节点做命名空间校验时报错
+ *
+ * - 统一加载 public/models/tractor.glb（通过 Vite 静态资源服务 /models/tractor.glb）
+ * - 从 useGLTF 缓存中克隆 scene（包含 SkinnedMesh/Bone 时使用 SkeletonUtils.clone），
+ *   所有缩放、居中、贴地、材质修改只作用于克隆体，绝不修改 useGLTF 缓存的原 scene，
+ *   避免组件重新挂载时在上一次修改过的缓存 scene 上重复缩放/定位导致尺寸漂移
+ * - 归一化顺序：先 updateMatrixWorld(true)，按原始包围盒计算缩放，
+ *   再 updateMatrixWorld(true) 后按最终 scale 重新计算 Box3，做水平居中 + 贴地
+ * - 不对模型做节点白名单过滤，完整保留 GLB 原始结构
  */
 export default function TractorModel({ onLoaded }: TractorModelProps) {
-  const { scene } = useGLTF(modelUrl);
+  // useGLTF 返回的是全局缓存的原始 scene，绝不可直接修改
+  const { scene } = useGLTF(MODEL_URL);
 
-  // 清理场景：移除非标准节点，避免 R3F 校验报错
-  const cleanedScene = useMemo(() => {
-    const removals: THREE.Object3D[] = [];
-    scene.traverse((child) => {
-      const type = (child as { type?: string }).type || '';
-      if (!KEEP_TYPES.has(type)) {
-        removals.push(child);
-      }
-    });
-    removals.forEach((node) => {
-      if (node.parent) {
-        node.parent.remove(node);
-      }
-    });
-    return scene;
+  // 从缓存 scene 克隆一份独立副本，后续所有修改只作用于克隆体
+  const model = useMemo(() => {
+    const cloned = SkeletonUtils.clone(scene) as THREE.Scene;
+    return cloned;
   }, [scene]);
 
+  // 归一化：居中、缩放、贴地（只作用于克隆体，每次挂载结果一致）
   useEffect(() => {
-    // 模型加载完成回调，把场景对象传出去供外层做相机 fit
-    if (cleanedScene && onLoaded) {
-      // 延迟一帧确保缩放/居中完成、首次渲染就绪
-      requestAnimationFrame(() => onLoaded(cleanedScene));
-    }
-  }, [cleanedScene, onLoaded]);
+    if (!model) return;
 
+    // 强制重置缩放：useGLTF 全局缓存 scene 可能被历史挂载污染（继承旧缩放），
+    // 必须先归一到 1 再基于原始包围盒计算，否则 scale 会算成 1 导致模型不缩放
+    model.scale.setScalar(1);
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (!maxDim) return;
+
+    // 目标最大边长 2.5 单位，适配 HeroSection 4:3 容器
+    const scale = 2.5 / maxDim;
+    model.scale.setScalar(scale);
+
+    // scale 确定后重新计算最终 Box3（保证 Box3 在最终 scale 之后计算）
+    model.updateMatrixWorld(true);
+    const finalBox = new THREE.Box3().setFromObject(model);
+    const finalCenter = finalBox.getCenter(new THREE.Vector3());
+    const finalMin = finalBox.min.clone();
+
+    // 水平居中 + 贴地（地面网格位于 y=-0.4）
+    model.position.set(-finalCenter.x, -finalMin.y - 0.4, -finalCenter.z);
+    model.updateMatrixWorld(true);
+
+    // 最终尺寸/位置确定后，通知外层做相机 fit（只回调一次）
+    onLoaded?.(model);
+  }, [model, onLoaded]);
+
+  // 材质与阴影处理（克隆体）
   useEffect(() => {
-    // 遍历场景，开启阴影投射与接收，调整材质 PBR 参数
-    cleanedScene.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const mesh = child as THREE.Mesh;
+    if (!model) return;
+    model.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.isMesh) {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-
-        if (mesh.material) {
-          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          mats.forEach((mat) => {
-            if (mat instanceof THREE.MeshStandardMaterial) {
-              mat.roughness = Math.min(mat.roughness, 0.85);
-              mat.metalness = Math.max(mat.metalness, 0.1);
-              mat.envMapIntensity = 0.8;
-            }
-          });
-        }
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mats.forEach((mat) => {
+          if (mat instanceof THREE.MeshStandardMaterial) {
+            mat.roughness = Math.min(mat.roughness, 0.85);
+            mat.metalness = Math.max(mat.metalness, 0.1);
+            mat.envMapIntensity = 0.8;
+          }
+        });
       }
     });
-  }, [cleanedScene]);
+  }, [model]);
 
-  // 计算模型包围盒，居中并调整到地面
-  useEffect(() => {
-    const box = new THREE.Box3().setFromObject(cleanedScene);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
+  if (!model) return null;
 
-    // 计算最大边长用于缩放（目标尺寸约 2.5 单位）
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale = 2.5 / maxDim;
-
-    // 居中 + 贴地
-    cleanedScene.position.x = -center.x * scale;
-    cleanedScene.position.z = -center.z * scale;
-    cleanedScene.position.y = -box.min.y * scale - 0.4; // 贴到网格地面（网格在 y=-0.4）
-
-    cleanedScene.scale.setScalar(scale);
-  }, [cleanedScene]);
-
-  return <primitive object={cleanedScene} />;
+  return <primitive object={model} />;
 }
-
-// 预加载模型
-useGLTF.preload(modelUrl);

@@ -115,7 +115,7 @@ server/knowledge/
 SRT27/
 ├── public/                          # 静态公共资源（构建时原样拷贝到 dist/）
 │   └── models/
-│       └── tractor.glb              # 拖拉机 3D 模型（/api/model/tractor 提供）
+│       └── tractor.glb              # 拖拉机 3D 模型（前端经 /models/tractor.glb 加载；后端 /api/model/tractor 为同一文件接口）
 │
 ├── src/                              # 前端源码（React 19 + Vite + TypeScript）
 │   ├── main.tsx                     # 应用入口（挂载 React + Router）
@@ -124,7 +124,7 @@ SRT27/
 │   ├── components/
 │   │   ├── Layout.tsx               # 全局布局：顶栏导航 + 主题/语言切换 + Outlet
 │   │   ├── TractorViewer.tsx       # 3D 查看器（R3F Canvas + OrbitControls + 自转）
-│   │   ├── TractorModel.tsx         # GLB 模型加载、清理 Sketchfab 非标准节点、居中缩放
+│   │   ├── TractorModel.tsx         # GLB 模型加载（useGLTF + clone 克隆处理）、居中缩放贴地
 │   │   ├── SectionDivider.tsx      # 绿色装饰分割线（leaf/dots/line 三种）
 │   │   └── ui/                     # shadcn/ui 基础组件（button/card/dialog/textarea）
 │   ├── pages/

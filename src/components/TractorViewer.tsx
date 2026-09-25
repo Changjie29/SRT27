@@ -86,6 +86,8 @@ export default function TractorViewer() {
   const [modelLoaded, setModelLoaded] = useState(false);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const autoRotateTimerRef = useRef<number | null>(null);
+  // OrbitControls 尚未挂载时暂存待 fit 的模型，挂载后补做一次相机 fit
+  const pendingFitRef = useRef<THREE.Object3D | null>(null);
 
   // 跟随暗色模式：监听 html 上的 theme-dark/theme-light class
   const [isDark, setIsDark] = useState(
@@ -136,13 +138,34 @@ export default function TractorViewer() {
     setAutoRotateByRef(false);
   }, [setAutoRotateByRef]);
 
-  // OrbitControls 挂载完成后开启初始自动旋转
-  const handleControlsRef = useCallback((node: OrbitControlsImpl | null) => {
-    controlsRef.current = node;
-    if (node) {
-      node.autoRotate = true;
-      node.autoRotateSpeed = AUTO_ROTATE_SPEED;
-    }
+  // 模型加载后自动 fit：按实际包围盒对准中心 + 按模型大小定相机距离（只计算一次）
+  const fitCameraToModel = useCallback((object: THREE.Object3D) => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const box = new THREE.Box3().setFromObject(object);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+
+    // 目标点：模型几何中心略偏上（视觉重心）
+    const target = new THREE.Vector3(center.x, center.y + size.y * 0.05, center.z);
+    controls.target.copy(target);
+
+    // 按 fov 计算刚好装下模型的距离，并留 40% 留白
+    const fitDistance = maxDim / 2 / Math.tan((CAMERA_CONFIG.fov * Math.PI) / 360);
+    const distance = fitDistance * 1.5;
+
+    // 45° 俯视角
+    const dir = new THREE.Vector3(1, 0.6, 1).normalize();
+    const cameraPos = target.clone().add(dir.multiplyScalar(distance));
+    controls.object.position.copy(cameraPos);
+
+    // 根据模型大小动态设置缩放范围
+    controls.minDistance = maxDim * 0.6;
+    controls.maxDistance = maxDim * 4;
+
+    controls.update();
   }, []);
 
   // 清理定时器
@@ -154,39 +177,34 @@ export default function TractorViewer() {
     };
   }, []);
 
+  // OrbitControls 挂载完成后开启初始自动旋转；若模型已加载但此前 fit 未执行，补做一次
+  const handleControlsRef = useCallback(
+    (node: OrbitControlsImpl | null) => {
+      controlsRef.current = node;
+      if (node) {
+        node.autoRotate = true;
+        node.autoRotateSpeed = AUTO_ROTATE_SPEED;
+        if (pendingFitRef.current) {
+          fitCameraToModel(pendingFitRef.current);
+          pendingFitRef.current = null;
+        }
+      }
+    },
+    [fitCameraToModel],
+  );
+
   const handleModelLoaded = useCallback(
     (object: THREE.Object3D) => {
       setModelLoaded(true);
 
-      // 模型加载后自动 fit：按实际包围盒对准中心 + 按模型大小定相机距离
-      const controls = controlsRef.current;
-      if (!controls) return;
-
-      const box = new THREE.Box3().setFromObject(object);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z) || 1;
-
-      // 目标点：模型几何中心略偏上（视觉重心）
-      const target = new THREE.Vector3(center.x, center.y + size.y * 0.05, center.z);
-      controls.target.copy(target);
-
-      // 按 fov 计算刚好装下模型的距离，并留 40% 留白
-      const fitDistance = (maxDim / 2) / Math.tan((CAMERA_CONFIG.fov * Math.PI) / 360);
-      const distance = fitDistance * 1.5;
-
-      // 45° 俯视角
-      const dir = new THREE.Vector3(1, 0.6, 1).normalize();
-      const cameraPos = target.clone().add(dir.multiplyScalar(distance));
-      controls.object.position.copy(cameraPos);
-
-      // 根据模型大小动态设置缩放范围
-      controls.minDistance = maxDim * 0.6;
-      controls.maxDistance = maxDim * 4;
-
-      controls.update();
+      // 模型加载后自动 fit：OrbitControls 已就绪则立即执行，否则暂存待挂载后补做
+      if (controlsRef.current) {
+        fitCameraToModel(object);
+      } else {
+        pendingFitRef.current = object;
+      }
     },
-    [],
+    [fitCameraToModel],
   );
 
   useEffect(() => {

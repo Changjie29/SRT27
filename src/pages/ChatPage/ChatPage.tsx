@@ -43,7 +43,10 @@ function loadHistory(): ChatMessage[] {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return [];
     const parsed = JSON.parse(saved);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [];
+    // 关闭页面时若正在请求，localStorage 里可能残留 loading/error 占位消息；恢复时丢弃
+    return Array.isArray(parsed)
+      ? parsed.filter((m) => m.role === 'user' || m.role === 'assistant')
+      : [];
   } catch {
     return [];
   }
@@ -131,6 +134,8 @@ export default function ChatPage() {
             brand: brand || undefined,
             model: model || undefined,
           }),
+          // 后端单请求上限约 20s，前端留足余量，避免网络异常时永久转圈
+          signal: AbortSignal.timeout(45_000),
         });
 
         let reply = '';

@@ -76,14 +76,14 @@ export default function MultimodalSection() {
           <div className="mb-3 text-sm font-medium text-wheat">{t('融合诊断价值', 'Value of Fusion')}</div>
           <p className="font-serif text-lg font-semibold text-foreground md:text-xl">
             {t(
-              '四类信号互为补充、交叉验证，诊断准确率较单模态提升 35% 以上',
-              'Four modalities cross-validate, raising accuracy by 35%+ over single-modality.',
+              '当前版本以故障文本诊断为主：本地知识库分块检索 + 大模型推理，多模态感知为规划方向',
+              'Current version focuses on text diagnosis: local KB chunk retrieval + LLM inference; multimodal sensing is a planned direction.',
             )}
           </p>
           <p className="mx-auto mt-3 max-w-2xl text-sm text-muted-foreground">
             {t(
-              '注意力机制自适应加权不同模态的贡献度，结合图卷积网络捕捉部件间时空依赖关系，实现对复杂耦合故障的精准定位与机理分析。',
-              'Attention adaptively weights modalities; GCN captures spatiotemporal dependencies among parts for precise localization of coupled faults.',
+              '技术链路：Markdown 知识库按章节切块 → 中文关键词召回（top-K）→ 注入系统提示约束模型仅依据知识库作答 → 结构化输出诊断建议。暂无传感器接入、无注意力/图卷积等模型，相关指标以实测为准。',
+              'Pipeline: Markdown KB chunking → Chinese keyword top-K retrieval → system-prompt grounding → structured diagnosis output. No sensors, attention, or GCN yet; metrics are TBD by real evaluation.',
             )}
           </p>
         </motion.div>
