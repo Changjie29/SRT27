@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent } from 'react';
-import { Send, Trash2, Loader2, Bot, User, Sparkles, Cpu } from 'lucide-react';
+import { Send, Trash2, Loader2, Bot, User, Sparkles, Cpu, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,14 @@ function loadHistory(): ChatMessage[] {
     const parsed = JSON.parse(saved);
     // 关闭页面时若正在请求，localStorage 里可能残留 loading/error 占位消息；恢复时丢弃
     return Array.isArray(parsed)
-      ? parsed.filter((m) => m.role === 'user' || m.role === 'assistant')
+      ? parsed.filter((m): m is ChatMessage =>
+          m !== null && typeof m === 'object' && typeof m.id === 'string' &&
+          typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant')
+        ).slice(-100).map((m) => ({
+          id: m.id, role: m.role, content: m.content,
+          model: typeof m.model === 'string' ? m.model : undefined,
+          provider: m.provider === 'gemini' || m.provider === 'deepseek' ? m.provider : undefined,
+        }))
       : [];
   } catch {
     return [];
@@ -58,9 +65,9 @@ function loadMeta(): { machineType: string; brand: string; model: string } {
     if (!meta) return { machineType: '', brand: '', model: '' };
     const m = JSON.parse(meta);
     return {
-      machineType: m?.machineType || '',
-      brand: m?.brand || '',
-      model: m?.model || '',
+      machineType: typeof m?.machineType === 'string' ? (MACHINE_TYPES_ZH[MACHINE_TYPES_EN.indexOf(m.machineType)] || m.machineType) : '',
+      brand: typeof m?.brand === 'string' ? m.brand : '',
+      model: typeof m?.model === 'string' ? m.model : '',
     };
   } catch {
     return { machineType: '', brand: '', model: '' };
@@ -78,13 +85,18 @@ export default function ChatPage() {
   const [machineType, setMachineType] = useState<string>(() => loadMeta().machineType);
   const [brand, setBrand] = useState<string>(() => loadMeta().brand);
   const [model, setModel] = useState<string>(() => loadMeta().model);
+  const requestRef = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    requestRef.current?.abort();
+    requestRef.current = null;
+  }, []);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 保存历史
   useEffect(() => {
     try {
-      if (messages.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      if (messages.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.filter((m) => m.role === 'user' || m.role === 'assistant').slice(-100)));
       else localStorage.removeItem(STORAGE_KEY);
     } catch { /* ignore */ }
   }, [messages]);
@@ -109,7 +121,10 @@ export default function ChatPage() {
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isLoading) return;
+      if (!trimmed || trimmed.length > 2000 || requestRef.current) return;
+      const controller = new AbortController();
+      requestRef.current = controller;
+      const timeout = window.setTimeout(() => controller.abort(new DOMException("Timeout", "TimeoutError")), 45_000);
 
       const userMsg: ChatMessage = { id: generateId(), role: 'user', content: trimmed };
       const loadingMsg: ChatMessage = { id: generateId(), role: 'loading', content: '' };
@@ -135,7 +150,7 @@ export default function ChatPage() {
             model: model || undefined,
           }),
           // 后端单请求上限约 20s，前端留足余量，避免网络异常时永久转圈
-          signal: AbortSignal.timeout(45_000),
+          signal: controller.signal,
         });
 
         let reply = '';
@@ -143,15 +158,18 @@ export default function ChatPage() {
         let provider: 'gemini' | 'deepseek' | '' = '';
         if (response.ok) {
           const data = await response.json();
-          reply = data?.choices?.[0]?.message?.content || '';
-          modelName = (data?.model as string) || '';
-          provider = (data?.provider as 'gemini' | 'deepseek') || '';
+          const result = data?.choices?.[0]?.message?.content;
+          if (typeof result !== 'string' || !result.trim()) throw new Error('Empty response');
+          reply = result;
+          modelName = typeof data?.model === 'string' ? data.model : '';
+          provider = data?.provider === 'gemini' || data?.provider === 'deepseek' ? data.provider : '';
         } else {
           // 后端已脱敏，统一友好文案
           const errData = await response.json().catch(() => null);
-          reply = errData?.error || t('智能诊断服务暂时无法连接，请稍后重试。', 'AI service unavailable, please try again later.');
+          reply = (typeof errData?.error === 'string' && errData.error) || t('智能诊断服务暂时无法连接，请稍后重试。', 'AI service unavailable, please try again later.');
         }
 
+        if (requestRef.current !== controller) return;
         if (modelName) setCurrentModel(modelName);
         if (provider) setCurrentProvider(provider);
 
@@ -169,6 +187,7 @@ export default function ChatPage() {
           ),
         );
       } catch {
+        if (requestRef.current !== controller) return;
         setMessages((prev) =>
           prev.map((m) =>
             m.id === loadingMsg.id
@@ -182,11 +201,15 @@ export default function ChatPage() {
         );
         toast.error(t('对话服务暂不可用', 'Chat service unavailable'));
       } finally {
-        setIsLoading(false);
-        setTimeout(() => textareaRef.current?.focus(), 0);
+        window.clearTimeout(timeout);
+        if (requestRef.current === controller) {
+          requestRef.current = null;
+          setIsLoading(false);
+          setTimeout(() => textareaRef.current?.focus(), 0);
+        }
       }
     },
-    [messages, isLoading, machineType, brand, model, t],
+    [messages, machineType, brand, model, t],
   );
 
   const handleSubmit = useCallback(
@@ -199,7 +222,7 @@ export default function ChatPage() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
         e.preventDefault();
         sendMessage(input);
       }
@@ -214,17 +237,28 @@ export default function ChatPage() {
     [sendMessage],
   );
 
+  const stopRequest = useCallback(() => {
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setIsLoading(false);
+    setMessages((prev) => prev.filter((m) => m.role !== 'loading'));
+    textareaRef.current?.focus();
+  }, []);
+
   const handleClear = useCallback(() => {
+    stopRequest();
+    setCurrentModel('');
+    setCurrentProvider('');
     setMessages([]);
     setIsLoading(false);
     toast.success(t('对话已清空', 'Chat cleared'));
-  }, [t]);
+  }, [t, stopRequest]);
 
   const isEmpty = messages.length === 0;
   const typeOptions = lang === 'zh' ? MACHINE_TYPES_ZH : MACHINE_TYPES_EN;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col bg-background">
+    <div className="flex h-[calc(100dvh-4rem)] flex-col bg-background">
       {/* 顶部工具栏 */}
       <div className="flex items-center justify-between border-b border-border/60 bg-card/50 px-4 py-3 md:px-6">
         <div className="flex items-center gap-2 min-w-0">
@@ -252,7 +286,7 @@ export default function ChatPage() {
         </div>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="secondary" size="sm" className="gap-1.5 shrink-0">
+            <Button variant="secondary" size="sm" className="gap-1.5 shrink-0" aria-label={t('清空对话', 'Clear conversation')} disabled={isEmpty}>
               <Trash2 className="h-4 w-4" />
               <span className="hidden sm:inline">{t('清空对话', 'Clear')}</span>
             </Button>
@@ -273,7 +307,7 @@ export default function ChatPage() {
       </div>
 
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto" role="log" aria-label={t('诊断对话', 'Diagnosis conversation')} aria-live="polite">
         <div className="mx-auto max-w-3xl px-4 py-6 md:px-6">
           {/* 空状态 / 欢迎态 */}
           {isEmpty && (
@@ -289,22 +323,27 @@ export default function ChatPage() {
                 <div className="mb-2 text-xs font-medium text-wheat">{t('农机信息（可选，帮助检索）', 'Machine info (optional, improves retrieval)')}</div>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <select
+                    aria-label={t('农机类型', 'Machine type')}
                     value={machineType}
                     onChange={(e) => setMachineType(e.target.value)}
                     className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
                   >
                     <option value="">{t('类型', 'Type')}</option>
-                    {typeOptions.map((v) => (
-                      <option key={v} value={v}>{v}</option>
+                    {typeOptions.map((v, index) => (
+                      <option key={MACHINE_TYPES_ZH[index]} value={MACHINE_TYPES_ZH[index]}>{v}</option>
                     ))}
                   </select>
                   <input
+                    aria-label={t('品牌', 'Brand')}
+                    maxLength={100}
                     value={brand}
                     onChange={(e) => setBrand(e.target.value)}
                     placeholder={t('品牌（选填）', 'Brand (optional)')}
                     className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
                   />
                   <input
+                    aria-label={t('型号', 'Model')}
+                    maxLength={100}
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                     placeholder={t('型号（选填）', 'Model (optional)')}
@@ -344,7 +383,7 @@ export default function ChatPage() {
                 </div>
               )}
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed md:max-w-[75%] ${
+                className={`min-w-0 break-words max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed md:max-w-[75%] ${
                   msg.role === 'user'
                     ? 'rounded-tr-sm bg-primary text-primary-foreground'
                     : msg.role === 'error'
@@ -362,7 +401,7 @@ export default function ChatPage() {
                 ) : msg.role === 'user' ? (
                   <div className="whitespace-pre-wrap">{msg.content}</div>
                 ) : (
-                  <div className="prose prose-sm max-w-none dark:prose-invert">
+                  <div className="prose prose-sm max-w-none overflow-x-auto dark:prose-invert">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                     {msg.role === 'assistant' && msg.model && (
                       <div className="mt-1.5 text-right text-[11px] text-muted-foreground/70">
@@ -388,6 +427,9 @@ export default function ChatPage() {
         <form onSubmit={handleSubmit} className="mx-auto max-w-3xl">
           <div className="flex items-end gap-2">
             <Textarea
+              aria-label={t('故障描述', 'Fault description')}
+              aria-describedby="chat-input-help"
+              aria-invalid={input.trim().length > 2000}
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -397,18 +439,23 @@ export default function ChatPage() {
               rows={2}
               disabled={isLoading}
             />
-            <Button
+            {isLoading ? (
+              <Button type="button" size="icon" onClick={stopRequest} aria-label={t('停止等待', 'Stop waiting')} title={t('停止等待', 'Stop waiting')}>
+                <Square className="h-4 w-4" />
+              </Button>
+            ) : <Button
               type="submit"
               size="icon"
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || input.trim().length > 2000}
               className="shrink-0"
               aria-label={t('发送', 'Send')}
             >
               <Send className="h-4 w-4" />
-            </Button>
+            </Button>}
           </div>
-          <div className="mt-2 text-xs text-muted-foreground">
-            {t('按 Enter 发送，Shift + Enter 换行', 'Enter to send, Shift+Enter for newline')}
+          <div id="chat-input-help" className="mt-2 flex justify-between gap-3 text-xs text-muted-foreground">
+            <span>{t('按 Enter 发送，Shift + Enter 换行', 'Enter to send, Shift+Enter for newline')}</span>
+            <span className={input.trim().length > 2000 ? 'text-destructive' : ''}>{input.trim().length} / 2000</span>
           </div>
         </form>
       </div>

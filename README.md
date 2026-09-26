@@ -118,7 +118,7 @@ SRT27/
 │       └── tractor.glb              # 拖拉机 3D 模型（前端经 /models/tractor.glb 加载；后端 /api/model/tractor 为同一文件接口）
 │
 ├── src/                              # 前端源码（React 19 + Vite + TypeScript）
-│   ├── main.tsx                     # 应用入口（挂载 React + Router）
+│   ├── index.tsx                     # 应用入口（挂载 React + Router）
 │   ├── app.tsx                      # 路由表（/ 首页、/chat 对话、* 404）
 │   ├── index.css / tailwind-theme.css / typography.css  # 样式与主题变量
 │   ├── components/
@@ -149,8 +149,7 @@ SRT27/
 │   │   ├── useLang.ts               # 中英双语切换（useSyncExternalStore）
 │   │   └── use-mobile.ts            # 响应式断点 hook
 │   └── lib/
-│       ├── utils.ts                 # cn() 类名合并
-│       └── api-base.ts              # API 基础地址
+│       └── utils.ts                 # cn() 类名合并
 │
 ├── server/                           # 后端（Node.js + Express + tsx，ESM）
 │   ├── dev.ts                       # 开发入口（tsx watch 启动 index.ts）
@@ -276,10 +275,21 @@ SRT27/
 
 ## 同步部署
 
-- GitHub：https://github.com/Changjie29/SRT27
+- GitHub：https://github.com/Changjie29/-gpt-
 - 本地工作区：clone 仓库后在根目录执行 `npm install` 即可开发，无需额外配置路径
 - 同步方式：本地改完后 commit 并 push 到 `main`，云环境通过 git pull 自动同步
 
 ---
 
 © 2026 司农智机 SRT27 · 南京农业大学
+
+## 2026-09-26 对话体验优化
+
+- 首页与对话页按路由加载，直接访问 `/chat` 不下载首页的 3D 代码。
+- 输入超过 2000 字符时显示计数并禁止发送；中文输入法组词时回车不发送。
+- 支持停止等待；清空或离开页面会取消前端请求，并隔离旧请求的完成回调。停止等待不保证服务端模型已经停止生成。
+- 仅保存最近 100 条用户/助手消息，恢复时过滤损坏记录和非法展示字段。
+- 农机类型使用稳定值，中英文切换保留选择，并兼容历史英文类型。
+- 增加输入控件无障碍标签、对话更新播报、动态视口高度及长内容横向滚动。
+
+验证：前后端构建、前端类型检查通过；Lint 无错误（基础按钮组件仍有原有 Fast Refresh 警告）。浏览器验证了双语机型保留、2001 字输入禁发、Shift+Enter 换行、停止等待、清空后新对话与模拟回复显示。请求交互使用临时本机模拟接口验证，未调用真实 LLM；中文输入法组合事件防护尚需在实际输入法中复核。首页 3D 构建块仍有体积告警。
