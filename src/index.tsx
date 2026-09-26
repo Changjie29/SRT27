@@ -6,6 +6,12 @@ import './index.css';
 import './tailwind-theme.css';
 import './typography.css';
 
+// 浏览器刷新时回到首页；站内跳转和直接打开对话链接仍按正常路由处理。
+const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+if (navigation?.type === 'reload') {
+  window.history.replaceState(null, '', import.meta.env.BASE_URL);
+}
+
 /* ===== ResizeObserver 兜底 =====
  * 某些浏览器/嵌入环境下原生 ResizeObserver 不触发回调，导致
  * react-three-fiber 的 Canvas 拿不到容器尺寸（恒为 0x0）而永不初始化。
